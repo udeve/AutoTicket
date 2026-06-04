@@ -17,6 +17,54 @@
 
 ---
 
+## 🚀 推荐版本：TypeScript / Node.js 高性能核心
+
+当前主线已迁移为 **TypeScript + Node.js 单核心架构**，新版本位于 `typescript/`，将加密、解密、HTTP keep-alive、兑换调度、登录、每日任务、配置校验和通知插件统一维护。旧 Python GUI、旧 JavaScript 脚本和小程序版本仍保留原目录作为历史参考。
+
+### 快速开始
+
+```bash
+cd typescript
+pnpm install
+pnpm check
+pnpm build
+```
+
+常用命令：
+
+```bash
+node dist/cli/index.js login captcha
+node dist/cli/index.js login direct --user user1 --login-name LOGIN_NAME --ses-id SES_ID
+node dist/cli/index.js login sms --user user1 --phone 13800000000 --code 123456
+node dist/cli/index.js daily --user user1
+node dist/cli/index.js exchange --user user1 --concurrency 5 --interval 50 --max-attempts 100
+node dist/cli/index.js ui
+node dist/cli/index.js web
+```
+
+`config/autoticket.json` 会在首次运行时自动生成。短信/密码登录成功后，程序会自动保存或更新用户登录信息。
+
+交互式 TUI 可直接完成登录、用户选择、兑换面额选择、钉钉通知配置和测试消息发送：
+
+```bash
+node dist/cli/index.js ui
+```
+
+架构说明见 [typescript/docs/typescript-core-migration.md](typescript/docs/typescript-core-migration.md)。
+
+中文文档：
+
+- [架构设计与实现说明](typescript/docs/architecture-and-implementation.zh-CN.md)
+- [用户使用手册](typescript/docs/user-manual.zh-CN.md)
+
+旧版本位置：
+
+- Python 桌面/脚本版：根目录 Python 文件
+- 旧 JavaScript 命令行版：`JavaScript_Version/`
+- uni-app 小程序版：`App_Version/`
+
+---
+
 ## 📋 目录
 
 - [项目简介](#-项目简介)

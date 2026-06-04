@@ -1,0 +1,65 @@
+{
+  "users": [
+    {
+      "id": "user1",
+      "loginName": "填入登录后的 login_name",
+      "userId": "可选，默认等于 loginName",
+      "sesId": "填入登录后的 ses_id",
+      "name": "可选备注"
+    }
+  ],
+  "exchange": {
+    "exchangeId": "10",
+    "startAt": "07:00:00",
+    "concurrency": 5,
+    "intervalMs": 50,
+    "maxAttempts": 100,
+    "stopRules": [
+      {
+        "match": "兑换中",
+        "status": "success"
+      },
+      {
+        "match": "兑换成功",
+        "status": "success"
+      },
+      {
+        "match": "已达上限",
+        "status": "success"
+      },
+      {
+        "match": "手慢啦",
+        "status": "failure"
+      }
+    ]
+  },
+  "dingtalk": {
+    "enabled": false,
+    "webhook": "",
+    "secret": ""
+  },
+  "schedule": {
+    "enabled": false,
+    "users": [],
+    "daily": {
+      "enabled": false,
+      "mode": "fixed",
+      "time": "08:30:00",
+      "rangeStartHour": 8,
+      "rangeEndHour": 10,
+      "delayMs": 1000
+    },
+    "exchange": {
+      "enabled": false,
+      "times": [
+        "07:00:00",
+        "11:30:00",
+        "17:00:00"
+      ],
+      "concurrency": 1,
+      "intervalMs": 100,
+      "maxAttempts": 50,
+      "stopAfterSuccess": true
+    }
+  }
+}

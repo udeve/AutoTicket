@@ -1,0 +1,4 @@
+dist
+node_modules
+config/autoticket.json
+config/autoticket.state.json
