@@ -145,7 +145,7 @@ program
   .description("Run daily login/sign/comment/query workflow")
   .option("-c, --config <path>", "config file path", DEFAULT_CONFIG_PATH)
   .requiredOption("-u, --user <id>", "user id in config")
-  .option("--delay <ms>", "delay between signins", Number, 1000)
+  .option("--delay <ms>", "minimum random delay between daily task steps", Number, 1000)
   .option("--force", "run even if daily task already ran today")
   .action(async (options) => {
     const repo = new ConfigRepository(options.config);
@@ -165,7 +165,7 @@ program
     }
 
     try {
-      const result = await taskService.runDailyWorkflow(user, options.delay);
+      const result = await taskService.runDailyWorkflow(user, { delayMs: options.delay });
       const summary = summarizeDailyWorkflow(result);
       await stateRepo.append({
         task: "daily",

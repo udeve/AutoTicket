@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { CHANNEL, DAILY_TASK_APP_VER_NO, ENDPOINTS } from "../constants.js";
 import type { RequestPayload, SessionUser } from "../types.js";
 import { nowTs, sleep } from "../utils/time.js";
@@ -36,6 +37,7 @@ export interface DailyWorkflowSummary {
 
 export interface DailyWorkflowOptions {
   delayMs?: number;
+  delayMaxMs?: number;
   commentContent?: string;
   includeIntegralSnapshot?: boolean;
   onStep?: (step: DailyWorkflowStepResult) => void;
@@ -94,7 +96,8 @@ export class TaskService {
   }
 
   async runDailyWorkflow(user: SessionUser, options: DailyWorkflowOptions | number = 1000): Promise<DailyWorkflowResult> {
-    const delayMs = typeof options === "number" ? options : options.delayMs ?? 1000;
+    const delayMinMs = typeof options === "number" ? options : options.delayMs ?? 1000;
+    const delayMaxMs = typeof options === "number" ? delayMinMs + 1000 : options.delayMaxMs ?? delayMinMs + 1000;
     const commentContent = typeof options === "number" ? "好" : options.commentContent ?? "好";
     const includeIntegralSnapshot = typeof options === "number" ? true : options.includeIntegralSnapshot ?? true;
     const onStep = typeof options === "number" ? undefined : options.onStep;
@@ -109,15 +112,13 @@ export class TaskService {
     const integralBefore = includeIntegralSnapshot ? await this.queryIntegral(user) : undefined;
     const dailyLogin = await this.dailyLogin(user);
     pushStep("dailyLogin", "登录签到", dailyLogin);
+    await delayBeforeNext(delayMinMs, delayMaxMs, "签到 1/3", onDelay);
     const signins: Array<TaskResponse | undefined> = [];
     for (let i = 0; i < 3; i += 1) {
       const signin = await this.signin(user);
       signins.push(signin);
       pushStep(`signin${i + 1}` as DailyWorkflowStepResult["key"], `签到 ${i + 1}/3`, signin);
-      if (i < 2 && delayMs > 0) {
-        onDelay?.(delayMs, `签到 ${i + 2}/3`);
-        await sleep(delayMs);
-      }
+      await delayBeforeNext(delayMinMs, delayMaxMs, i < 2 ? `签到 ${i + 2}/3` : "发表评论", onDelay);
     }
     const comment = await this.comment(user, commentContent);
     pushStep("comment", "发表评论", comment, [`内容: ${commentContent}`]);
@@ -125,6 +126,20 @@ export class TaskService {
     pushStep("query", "积分查询", query, [formatIntegralChange(integralBefore, query)]);
     return { integralBefore, dailyLogin, signins, comment, query, steps };
   }
+}
+
+async function delayBeforeNext(delayMinMs: number, delayMaxMs: number, nextLabel: string, onDelay: DailyWorkflowOptions["onDelay"]): Promise<void> {
+  const delayMs = randomDelayMs(delayMinMs, delayMaxMs);
+  if (delayMs <= 0) return;
+  onDelay?.(delayMs, nextLabel);
+  await sleep(delayMs);
+}
+
+export function randomDelayMs(minMs: number, maxMs: number): number {
+  const min = Math.max(0, Math.floor(minMs));
+  const max = Math.max(min, Math.floor(maxMs));
+  if (max <= 0) return 0;
+  return randomInt(min, max + 1);
 }
 
 export function summarizeDailyWorkflow(result: DailyWorkflowResult): DailyWorkflowSummary {

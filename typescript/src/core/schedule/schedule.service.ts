@@ -119,7 +119,7 @@ export class ScheduleService {
       const result = await new TaskService(client).runDailyWorkflow(user, {
         delayMs: this.options.config.schedule.daily.delayMs,
         onStep: (step) => this.logger(formatDailyStepLog(user.id, step)),
-        onDelay: (delayMs, nextLabel) => this.logger(`${user.id} 等待 ${delayMs}ms 后执行 ${nextLabel}。`)
+        onDelay: (delayMs, nextLabel) => this.logger(`${user.id} 随机等待 ${delayMs}ms 后执行 ${nextLabel}。`)
       });
       const summary = summarizeDailyWorkflow(result);
       await this.options.stateRepo.append({

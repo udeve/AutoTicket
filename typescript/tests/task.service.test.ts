@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDailyWorkflowSummary, summarizeDailyWorkflow, TaskService, type DailyWorkflowResult, type TaskResponse } from "../src/core/services/task.service.js";
+import { formatDailyWorkflowSummary, randomDelayMs, summarizeDailyWorkflow, TaskService, type DailyWorkflowResult, type TaskResponse } from "../src/core/services/task.service.js";
 
 describe("task service summaries", () => {
   it("summarizes daily workflow steps for display", () => {
@@ -48,5 +48,42 @@ describe("task service summaries", () => {
 
     expect(summarizeDailyWorkflow(result).success).toBe(true);
     expect(result.steps.slice(0, 4).every((step) => step.success)).toBe(true);
+  });
+
+  it("delays after daily login and each signin before the next task", async () => {
+    const responses: TaskResponse[] = [
+      { result: "0", msg: "查询成功", remain_integral: "16" },
+      { result: "0", msg: "登录成功" },
+      { result: "0", msg: "签到成功" },
+      { result: "0", msg: "签到成功" },
+      { result: "0", msg: "签到成功" },
+      { result: "0", msg: "留言成功" },
+      { result: "0", msg: "查询成功", remain_integral: "20" }
+    ];
+    const delays: Array<{ delayMs: number; nextLabel: string }> = [];
+    const client = {
+      postEncrypted: async () => ({ data: responses.shift() })
+    };
+
+    await new TaskService(client as never).runDailyWorkflow({ id: "u1", loginName: "u1", sesId: "s1" }, {
+      delayMs: 1,
+      delayMaxMs: 1,
+      onDelay: (delayMs, nextLabel) => delays.push({ delayMs, nextLabel })
+    });
+
+    expect(delays).toEqual([
+      { delayMs: 1, nextLabel: "签到 1/3" },
+      { delayMs: 1, nextLabel: "签到 2/3" },
+      { delayMs: 1, nextLabel: "签到 3/3" },
+      { delayMs: 1, nextLabel: "发表评论" }
+    ]);
+  });
+
+  it("generates random daily step delay inside inclusive range", () => {
+    for (let i = 0; i < 50; i += 1) {
+      const delay = randomDelayMs(1000, 2000);
+      expect(delay).toBeGreaterThanOrEqual(1000);
+      expect(delay).toBeLessThanOrEqual(2000);
+    }
   });
 });

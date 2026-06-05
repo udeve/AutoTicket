@@ -256,7 +256,7 @@ CLI、TUI、WebUI 默认展示每个步骤的成功/失败摘要。TUI 执行时
 node dist/cli/index.js daily --user user1
 ```
 
-指定签到间隔：
+指定每日任务步骤随机等待下限：
 
 ```bash
 node dist/cli/index.js daily --user user1 --delay 1000
@@ -266,7 +266,7 @@ node dist/cli/index.js daily --user user1 --delay 1000
 
 - `--config`：配置文件路径，可选，默认 `config/autoticket.json`。
 - `--user`：配置文件中的用户 ID。
-- `--delay`：3 次签到之间的间隔，单位毫秒，默认 `1000`。
+- `--delay`：每日任务步骤之间随机等待的下限，单位毫秒，默认 `1000`。实际上会在 `delay` 到 `delay + 1000` 之间随机，例如默认是 `1000~2000ms`。
 
 ## 10. 查询用户与执行状态
 
@@ -417,6 +417,8 @@ node dist/cli/index.js exchange --user user1 --exchange-id 10 --start-at 07:00:0
 - `mode: "range"`：在 `rangeStartHour` 到 `rangeEndHour` 之间随机选择一个时间执行，例如 `8` 到 `10` 表示 `08:00` 到 `10:00` 之间。
 
 TUI 中每日任务和优惠券兑换分开设置；每日任务的时间区间通过小时选择框设置，优惠券兑换继续使用固定场次多选。
+
+`schedule.daily.delayMs` 是每日任务步骤之间随机等待的下限，上限自动为 `delayMs + 1000`。默认配置 `1000` 表示每次在登录签到之后、每次签到之后随机等待 `1000~2000ms`，再进入下一项。
 
 定时兑换有独立的请求间隔和最大尝试次数，默认 `intervalMs=100`、`maxAttempts=50`。这可以避免活动刚开始时接口短暂返回“活动还未开始”就立即结束。
 

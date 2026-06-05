@@ -199,12 +199,16 @@ CLI / WebUI / TUI daily
   -> 查找用户
   -> TaskService.runDailyWorkflow()
       -> dailyLogin(type=1)
+      -> random delay
       -> signin(type=5) x 3
+          -> each signin 后 random delay
       -> comment(content="好")
       -> queryIntegral()
   -> 输出结果
   -> 钉钉通知
 ```
+
+每日任务步骤之间不是并发执行。登录签到后、每次签到后都会随机等待一段时间再进入下一项；默认下限 `delayMs=1000`，上限自动为 `delayMs + 1000`，即默认 `1000~2000ms`。
 
 ### 4.3 登录流程
 
