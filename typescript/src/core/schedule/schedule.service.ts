@@ -86,8 +86,9 @@ export class ScheduleService {
       return users.map((user) => ({ userId: user.id, date, time, mode: "fixed" }));
     }
     const items: DailySchedulePlanItem[] = [];
+    const shardIndexes = randomShardIndexes(users);
     for (const user of users) {
-      const time = await this.getOrCreateDailyRandomTime(user.id, date);
+      const time = await this.getOrCreateDailyRandomTime(user.id, date, shardIndexes.get(user.id) ?? 0, users.length);
       items.push({ userId: user.id, date, time, mode: "range" });
     }
     return items.sort((a, b) => a.time.localeCompare(b.time));
@@ -232,33 +233,42 @@ export class ScheduleService {
       return [{ task: "daily", time, timeText: formatTimeText(time) }];
     }
     const candidates: Array<Extract<ScheduleCandidate, { task: "daily" }>> = [];
-    for (const user of this.resolveUsers()) {
+    const users = this.resolveUsers();
+    const shardIndexes = randomShardIndexes(users);
+    for (const user of users) {
       const existingRun = await this.options.stateRepo.hasRunToday(user.id, "daily");
-      const time = existingRun ? await this.dailyRandomTimeForDate(user.id, tomorrowKey(now), now) : await this.nextDailyTimeForUser(user, now);
+      const shardIndex = shardIndexes.get(user.id) ?? 0;
+      const time = existingRun ? await this.dailyRandomTimeForDate(user.id, tomorrowKey(now), now, shardIndex, users.length) : await this.nextDailyTimeForUser(user, now, shardIndex, users.length);
       candidates.push({ task: "daily", time, timeText: formatTimeText(time), user });
     }
     return candidates;
   }
 
-  private async nextDailyTimeForUser(user: UserConfig, now = new Date()): Promise<Date> {
-    const today = await this.dailyRandomTimeForDate(user.id, todayKey(now), now);
+  private async nextDailyTimeForUser(user: UserConfig, now = new Date(), userIndex?: number, userCount?: number): Promise<Date> {
+    const users = userCount === undefined ? this.resolveUsers() : undefined;
+    const index = userIndex ?? Math.max(0, users?.findIndex((item) => item.id === user.id) ?? 0);
+    const count = userCount ?? Math.max(1, users?.length ?? 1);
+    const today = await this.dailyRandomTimeForDate(user.id, todayKey(now), now, index, count);
     if (today.getTime() > now.getTime()) return today;
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return this.dailyRandomTimeForDate(user.id, todayKey(tomorrow), tomorrow);
+    return this.dailyRandomTimeForDate(user.id, todayKey(tomorrow), tomorrow, index, count);
   }
 
-  private async dailyRandomTimeForDate(userId: string, dateKey: string, base: Date): Promise<Date> {
-    const time = await this.getOrCreateDailyRandomTime(userId, dateKey);
+  private async dailyRandomTimeForDate(userId: string, dateKey: string, base: Date, userIndex?: number, userCount?: number): Promise<Date> {
+    const users = this.resolveUsers();
+    const index = userIndex ?? Math.max(0, users.findIndex((item) => item.id === userId));
+    const count = userCount ?? Math.max(1, users.length);
+    const time = await this.getOrCreateDailyRandomTime(userId, dateKey, index, count);
     this.logger(`${dateKey} ${userId} 每日任务随机时间: ${time}`);
     return parseDailyRandomTime(dateKey, time, base);
   }
 
-  private async getOrCreateDailyRandomTime(userId: string, dateKey: string): Promise<string> {
+  private async getOrCreateDailyRandomTime(userId: string, dateKey: string, userIndex: number, userCount: number): Promise<string> {
     const daily = this.options.config.schedule.daily;
     const saved = await this.options.stateRepo.getDailyRandomTime(userId, dateKey, daily.rangeStartHour, daily.rangeEndHour);
     if (saved) return normalizeTimeText(saved.time);
-    const time = randomTimeTextInRange(daily.rangeStartHour, daily.rangeEndHour);
+    const time = randomTimeTextInShard(daily.rangeStartHour, daily.rangeEndHour, userIndex, userCount);
     await this.options.stateRepo.saveDailyRandomTime({
       date: dateKey,
       userId,
@@ -343,6 +353,33 @@ export function randomTimeTextInRange(startHour: number, endHour: number): strin
     throw new Error("Invalid daily time range: end hour must be greater than start hour.");
   }
   const totalSeconds = startHour * 60 * 60 + randomInt((endHour - startHour) * 60 * 60);
+  return formatSecondOfDay(totalSeconds);
+}
+
+export function randomTimeTextInShard(startHour: number, endHour: number, shardIndex: number, shardCount: number): string {
+  if (endHour <= startHour) {
+    throw new Error("Invalid daily time range: end hour must be greater than start hour.");
+  }
+  const count = Math.max(1, Math.floor(shardCount));
+  const index = Math.min(Math.max(0, Math.floor(shardIndex)), count - 1);
+  const startSecond = startHour * 60 * 60;
+  const totalRangeSeconds = (endHour - startHour) * 60 * 60;
+  const shardStartOffset = Math.floor((totalRangeSeconds * index) / count);
+  const shardEndOffset = Math.floor((totalRangeSeconds * (index + 1)) / count);
+  const shardSize = Math.max(1, shardEndOffset - shardStartOffset);
+  return formatSecondOfDay(startSecond + shardStartOffset + randomInt(shardSize));
+}
+
+export function randomShardIndexes(users: Array<{ id: string }>): Map<string, number> {
+  const shuffled = [...users];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = randomInt(i + 1);
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return new Map(shuffled.map((user, index) => [user.id, index]));
+}
+
+function formatSecondOfDay(totalSeconds: number): string {
   const hour = Math.floor(totalSeconds / (60 * 60));
   const minute = Math.floor(totalSeconds / 60) % 60;
   const second = totalSeconds % 60;

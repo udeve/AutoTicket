@@ -267,7 +267,7 @@ CLI schedule run / PM2
   -> 输出 PM2 可捕获的流水日志
 ```
 
-每日任务随机时间精确到秒，按账号分别生成。同一天同一账号同一时间区间只生成一次，保存在状态文件中；`schedule daily-plan` 和 TUI 的 `查看明日每日时间` 可以提前生成并查看。
+每日任务随机时间精确到秒，按账号分别生成。多账号场景采用“账号片段随机分配 + 片内随机”：先随机打乱账号对应片段，再在各自片段内生成具体秒数，避免纯独立随机导致多个账号时间过近。同一天同一账号同一时间区间只生成一次，保存在状态文件中；`schedule daily-plan` 和 TUI 的 `查看明日每日时间` 可以提前生成并查看。
 
 PM2 管理由 [src/core/schedule/pm2-manager.ts](../src/core/schedule/pm2-manager.ts) 负责。`schedule restart` 会先删除旧的 `autoticket-schedule` 进程记录，再按当前目录重新启动，避免项目目录迁移后继续复用旧脚本路径。
 

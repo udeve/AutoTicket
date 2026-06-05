@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { formatDailySchedulePlan, randomTimeTextInRange, formatScheduleLogTimestamp, nextDailyOccurrence, nextOccurrence, tomorrowKey, withScheduleLogTimestamp } from "../src/core/schedule/schedule.service.js";
+import { formatDailySchedulePlan, randomShardIndexes, randomTimeTextInRange, randomTimeTextInShard, formatScheduleLogTimestamp, nextDailyOccurrence, nextOccurrence, ScheduleService, tomorrowKey, withScheduleLogTimestamp } from "../src/core/schedule/schedule.service.js";
+import { createDefaultConfig } from "../src/core/config/config.repository.js";
+import { TaskStateRepository, type TaskState } from "../src/core/state/task-state.repository.js";
 
 describe("schedule service", () => {
   it("calculates next occurrence today", () => {
@@ -45,6 +47,46 @@ describe("schedule service", () => {
   it("generates crypto random time text inside selected range", () => {
     const time = randomTimeTextInRange(6, 7);
     expect(time).toMatch(/^06:\d{2}:\d{2}$/);
+  });
+
+  it("generates random time text inside a selected shard", () => {
+    for (let i = 0; i < 30; i += 1) {
+      const first = randomTimeTextInShard(6, 7, 0, 2);
+      const second = randomTimeTextInShard(6, 7, 1, 2);
+      expect(first).toMatch(/^06:([0-2]\d):\d{2}$/);
+      expect(second).toMatch(/^06:([3-5]\d):\d{2}$/);
+    }
+  });
+
+  it("randomizes which account gets which daily shard", () => {
+    const indexes = randomShardIndexes([{ id: "u1" }, { id: "u2" }, { id: "u3" }]);
+    expect([...indexes.keys()].sort()).toEqual(["u1", "u2", "u3"]);
+    expect([...indexes.values()].sort()).toEqual([0, 1, 2]);
+  });
+
+  it("previews multi-user random daily plan with one saved time per shard", async () => {
+    const config = createDefaultConfig();
+    config.users = [
+      { id: "u1", loginName: "u1", sesId: "s1" },
+      { id: "u2", loginName: "u2", sesId: "s2" }
+    ];
+    config.schedule.daily.mode = "range";
+    config.schedule.daily.rangeStartHour = 6;
+    config.schedule.daily.rangeEndHour = 7;
+    const stateRepo = new TaskStateRepository();
+    let state: TaskState = { runs: [], dailyRandomTimes: [] };
+    stateRepo.load = async () => state;
+    stateRepo.save = async (next) => {
+      state = next;
+    };
+
+    const plan = await new ScheduleService({ config, stateRepo }).previewDailyPlan("2026-06-06");
+    const minutes = plan.map((item) => Number(item.time.slice(3, 5))).sort((a, b) => a - b);
+    expect(plan).toHaveLength(2);
+    expect(minutes[0]).toBeGreaterThanOrEqual(0);
+    expect(minutes[0]).toBeLessThan(30);
+    expect(minutes[1]).toBeGreaterThanOrEqual(30);
+    expect(minutes[1]).toBeLessThan(60);
   });
 
   it("formats schedule log timestamp", () => {
