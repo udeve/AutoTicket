@@ -11,6 +11,7 @@ describe("config schema", () => {
     expect(config.exchange.exchangeId).toBe("10");
     expect(config.exchange.startAt).toBe("07:00:00");
     expect(config.exchange.concurrency).toBe(1);
+    expect(config.exchange.stopRules).toContainEqual({ match: "每天最多兑换", status: "success" });
     expect(config.exchange.stopRules).toContainEqual({ match: "手慢啦", status: "failure" });
     expect(config.schedule.enabled).toBe(false);
     expect(config.schedule.daily.mode).toBe("fixed");

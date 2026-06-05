@@ -4,6 +4,7 @@ export const DEFAULT_EXCHANGE_STOP_RULES = [
   { match: "兑换中", status: "success" },
   { match: "兑换成功", status: "success" },
   { match: "已达上限", status: "success" },
+  { match: "每天最多兑换", status: "success" },
   { match: "手慢啦", status: "failure" }
 ] as const;
 

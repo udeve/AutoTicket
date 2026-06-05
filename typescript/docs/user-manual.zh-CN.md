@@ -64,6 +64,7 @@ config/autoticket.json
       { "match": "兑换中", "status": "success" },
       { "match": "兑换成功", "status": "success" },
       { "match": "已达上限", "status": "success" },
+      { "match": "每天最多兑换", "status": "success" },
       { "match": "手慢啦", "status": "failure" }
     ]
   },
@@ -503,6 +504,7 @@ node dist/cli/index.js login sms --user user1 --phone 13800000000 --code 123456
 ```json
 "stopRules": [
   { "match": "兑换成功", "status": "success" },
+  { "match": "每天最多兑换", "status": "success" },
   { "match": "手慢啦", "status": "failure" }
 ]
 ```

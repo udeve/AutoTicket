@@ -111,4 +111,36 @@ describe("exchange scheduler", () => {
     expect(summary.success).toBe(false);
     expect(formatExchangeRunSummary(summary)).toContain("优惠券兑换已停止但未成功。");
   });
+
+  it("treats daily exchange limit message as success", async () => {
+    const service = {
+      async exchangeOnce() {
+        return {
+          statusCode: 200,
+          data: { result: "999992", msg: "对不起，实名用户每天最多兑换1次绿色出行抵扣券" },
+          timings: {
+            requestMs: 1,
+            decryptMs: 1,
+            totalMs: 3
+          }
+        };
+      }
+    };
+
+    const scheduler = new ExchangeScheduler(service as never);
+    const result = await scheduler.run({
+      user: { id: "u1", loginName: "login", sesId: "session" },
+      exchangeId: "10",
+      concurrency: 1,
+      intervalMs: 0,
+      maxAttempts: 5,
+      stopRules: [{ match: "每天最多兑换", status: "success" }]
+    });
+
+    const summary = summarizeExchangeRun(result);
+    expect(result.attempts).toHaveLength(1);
+    expect(result.final?.msg).toContain("每天最多兑换");
+    expect(summary.success).toBe(true);
+    expect(formatExchangeRunSummary(summary)).toContain("优惠券兑换成功。");
+  });
 });

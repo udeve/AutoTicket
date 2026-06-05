@@ -152,6 +152,7 @@ node dist/cli/index.js schedule daily-plan --date 2026-06-05
   { "match": "兑换中", "status": "success" },
   { "match": "兑换成功", "status": "success" },
   { "match": "已达上限", "status": "success" },
+  { "match": "每天最多兑换", "status": "success" },
   { "match": "手慢啦", "status": "failure" }
 ]
 ```
