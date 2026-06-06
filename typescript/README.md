@@ -28,21 +28,44 @@ dist/       构建产物
 ## 快速开始
 
 ```bash
-pnpm install
-pnpm check
-pnpm build
+pnpm run bootstrap
+pnpm run build:all
+```
+
+注册本机命令：
+
+```bash
+pnpm run install:cli
+```
+
+`pnpm run bootstrap` 用于首次安装依赖。`pnpm run build:all` 会执行类型检查、单元测试和构建。`pnpm run install:cli` 会在构建通过后执行 `npm link`，把 `autoticket` 注册成本机命令。
+
+如果本机 `npm link` 不可用，也可以先配置 pnpm 全局目录后再链接：
+
+```bash
+pnpm setup
+pnpm link --global
+```
+
+之后可以直接使用：
+
+```bash
+autoticket ui
+autoticket web
+autoticket users
+autoticket schedule status
 ```
 
 启动交互式 TUI：
 
 ```bash
-node dist/cli/index.js ui
+autoticket ui
 ```
 
 启动 WebUI：
 
 ```bash
-node dist/cli/index.js web
+autoticket web
 ```
 
 默认地址：
@@ -72,27 +95,19 @@ config/autoticket.state.json
 ## 常用命令
 
 ```bash
-node dist/cli/index.js login direct --user user1 --login-name LOGIN_NAME --ses-id SES_ID
-node dist/cli/index.js login captcha
-node dist/cli/index.js login send-sms --phone 13800000000 --img-uni-code 图片唯一编号 --captcha 图形验证码
-node dist/cli/index.js login sms --user user1 --phone 13800000000 --code 123456
-node dist/cli/index.js login password --user user1 --phone 13800000000 --password 密码 --img-uni-code 图片唯一编号 --captcha 图形验证码
-node dist/cli/index.js users
-node dist/cli/index.js user status --user user1
-node dist/cli/index.js daily --user user1
-node dist/cli/index.js exchange --user user1
-node dist/cli/index.js state
-```
-
-`package.json` 暴露了 `autoticket` bin，安装或链接后也可以使用：
-
-```bash
-autoticket ui
+autoticket login direct --user user1 --login-name LOGIN_NAME --ses-id SES_ID
+autoticket login captcha
+autoticket login send-sms --phone 13800000000 --img-uni-code 图片唯一编号 --captcha 图形验证码
+autoticket login sms --user user1 --phone 13800000000 --code 123456
+autoticket login password --user user1 --phone 13800000000 --password 密码 --img-uni-code 图片唯一编号 --captcha 图形验证码
 autoticket users
+autoticket user status --user user1
+autoticket daily --user user1
 autoticket exchange --user user1
+autoticket state
 ```
 
-未安装为全局命令时，直接使用 `node dist/cli/index.js ...` 最稳定。
+`package.json` 暴露了 `autoticket` bin。未注册本机命令时，也可以使用 `node dist/cli/index.js ...`。
 
 ## 功能形态
 
@@ -100,9 +115,9 @@ autoticket exchange --user user1
 
 | 入口 | 命令 | 适合场景 |
 |---|---|---|
-| CLI | `node dist/cli/index.js ...` | 脚本化、排错、自动化 |
-| TUI | `node dist/cli/index.js ui` | 日常交互配置、登录、定时任务管理 |
-| WebUI | `node dist/cli/index.js web` | 本地浏览器查看用户、状态和手动执行任务 |
+| CLI | `autoticket ...` | 脚本化、排错、自动化 |
+| TUI | `autoticket ui` | 日常交互配置、登录、定时任务管理 |
+| WebUI | `autoticket web` | 本地浏览器查看用户、状态和手动执行任务 |
 
 TUI 当前功能最完整，包含钉钉通知测试、PM2 后台管理和定时任务设置。WebUI 侧重本地浏览器里的登录、状态查看、每日任务和兑换执行。
 
@@ -111,18 +126,18 @@ TUI 当前功能最完整，包含钉钉通知测试、PM2 后台管理和定时
 前台运行：
 
 ```bash
-node dist/cli/index.js schedule run
+autoticket schedule run
 ```
 
 PM2 后台运行：
 
 ```bash
 npm install -g pm2
-node dist/cli/index.js schedule start
-node dist/cli/index.js schedule restart
-node dist/cli/index.js schedule status
-node dist/cli/index.js schedule logs
-node dist/cli/index.js schedule stop
+autoticket schedule start
+autoticket schedule restart
+autoticket schedule status
+autoticket schedule logs
+autoticket schedule stop
 ```
 
 `schedule restart` 会先删除旧的 `autoticket-schedule` PM2 进程记录，再按当前目录重新启动，适合项目目录迁移后使用。
@@ -130,13 +145,13 @@ node dist/cli/index.js schedule stop
 查看明天每日任务执行时间：
 
 ```bash
-node dist/cli/index.js schedule daily-plan
+autoticket schedule daily-plan
 ```
 
 指定日期：
 
 ```bash
-node dist/cli/index.js schedule daily-plan --date 2026-06-05
+autoticket schedule daily-plan --date 2026-06-05
 ```
 
 如果每日任务是随机时间区间模式，查看时会为每个账号生成并保存该日期的随机执行时间；之后重启后台或再次查看都会复用同一个时间。

@@ -24,12 +24,23 @@ pnpm --version
 在 `typescript/` 目录执行：
 
 ```bash
-pnpm install
-pnpm check
-pnpm build
+pnpm run bootstrap
+pnpm run build:all
+pnpm run install:cli
 ```
 
-`pnpm check` 会执行类型检查、单元测试和构建。如果全部通过，说明本地程序状态正常。
+`pnpm run bootstrap` 用于首次安装依赖。`pnpm run build:all` 会执行类型检查、单元测试和构建。如果全部通过，说明本地程序状态正常。`pnpm run install:cli` 会在构建通过后执行 `npm link`，把当前项目注册成本机命令，之后可以用 `autoticket xxx` 代替 `node dist/cli/index.js xxx`。
+
+如果本机 `npm link` 不可用，也可以先执行：
+
+```bash
+pnpm setup
+pnpm link --global
+```
+
+然后重新打开终端，再使用 `autoticket --help` 验证命令是否可用。
+
+建议仍然在 `typescript/` 目录中运行 `autoticket`，这样默认配置会写入 `typescript/config/autoticket.json`。如果在其他目录运行，请显式传入 `--config`。
 
 ## 4. 自动配置文件
 
@@ -109,7 +120,7 @@ pnpm build
 启动本地 WebUI：
 
 ```bash
-node dist/cli/index.js web
+autoticket web
 ```
 
 浏览器打开：
@@ -121,7 +132,7 @@ http://127.0.0.1:3210
 自定义端口：
 
 ```bash
-node dist/cli/index.js web --port 4000
+autoticket web --port 4000
 ```
 
 WebUI 当前支持：
@@ -143,13 +154,13 @@ WebUI 当前支持：
 构建后运行：
 
 ```bash
-node dist/cli/index.js ui
+autoticket ui
 ```
 
 也可以使用别名：
 
 ```bash
-node dist/cli/index.js tui
+autoticket tui
 ```
 
 TUI 支持：
@@ -180,12 +191,12 @@ LOGIN_NAME + SES_ID 直接登录
 ## 7. 查看命令帮助
 
 ```bash
-node dist/cli/index.js --help
-node dist/cli/index.js login --help
-node dist/cli/index.js daily --help
-node dist/cli/index.js exchange --help
-node dist/cli/index.js ui --help
-node dist/cli/index.js web --help
+autoticket --help
+autoticket login --help
+autoticket daily --help
+autoticket exchange --help
+autoticket ui --help
+autoticket web --help
 ```
 
 ## 8. 登录辅助
@@ -195,20 +206,20 @@ node dist/cli/index.js web --help
 如果你已经有 `LOGIN_NAME` 和 `SES_ID`，可以直接保存：
 
 ```bash
-node dist/cli/index.js login direct --user user1 --login-name LOGIN_NAME --ses-id SES_ID
+autoticket login direct --user user1 --login-name LOGIN_NAME --ses-id SES_ID
 ```
 
 这是当前推荐放在首位的登录方式。保存后可以直接执行每日任务或兑换任务：
 
 ```bash
-node dist/cli/index.js daily --user user1
-node dist/cli/index.js exchange --user user1
+autoticket daily --user user1
+autoticket exchange --user user1
 ```
 
 ### 8.2 获取图形验证码
 
 ```bash
-node dist/cli/index.js login captcha
+autoticket login captcha
 ```
 
 命令会输出接口返回内容。你需要从返回内容中取得图形验证码相关字段，例如 `imgUniCode` 和验证码图片数据。当前 CLI 只输出结果，不自动渲染图片；WebUI 会把返回 JSON 展示在输出区。
@@ -216,13 +227,13 @@ node dist/cli/index.js login captcha
 ### 8.3 发送短信验证码
 
 ```bash
-node dist/cli/index.js login send-sms --phone 13800000000 --img-uni-code 图片唯一编号 --captcha 图形验证码
+autoticket login send-sms --phone 13800000000 --img-uni-code 图片唯一编号 --captcha 图形验证码
 ```
 
 ### 8.4 短信登录并自动保存
 
 ```bash
-node dist/cli/index.js login sms --user user1 --phone 13800000000 --code 123456
+autoticket login sms --user user1 --phone 13800000000 --code 123456
 ```
 
 登录成功后，程序会自动写入 `config/autoticket.json`。`--user user1` 表示保存为配置中的 `user1`。
@@ -230,7 +241,7 @@ node dist/cli/index.js login sms --user user1 --phone 13800000000 --code 123456
 ### 8.5 密码登录并自动保存
 
 ```bash
-node dist/cli/index.js login password --user user1 --phone 13800000000 --password 你的密码 --img-uni-code 图片唯一编号 --captcha 图形验证码
+autoticket login password --user user1 --phone 13800000000 --password 你的密码 --img-uni-code 图片唯一编号 --captcha 图形验证码
 ```
 
 ## 9. 执行每日任务
@@ -254,13 +265,13 @@ CLI、TUI、WebUI 默认展示每个步骤的成功/失败摘要。TUI 执行时
 执行命令：
 
 ```bash
-node dist/cli/index.js daily --user user1
+autoticket daily --user user1
 ```
 
 指定每日任务步骤随机等待下限：
 
 ```bash
-node dist/cli/index.js daily --user user1 --delay 1000
+autoticket daily --user user1 --delay 1000
 ```
 
 参数说明：
@@ -274,31 +285,31 @@ node dist/cli/index.js daily --user user1 --delay 1000
 列出当前配置中的用户：
 
 ```bash
-node dist/cli/index.js users
+autoticket users
 ```
 
 查询指定用户的登录状态和积分信息：
 
 ```bash
-node dist/cli/index.js user status --user user1
+autoticket user status --user user1
 ```
 
 查看今天保存的任务执行状态：
 
 ```bash
-node dist/cli/index.js state
+autoticket state
 ```
 
 只查看某个用户：
 
 ```bash
-node dist/cli/index.js state --user user1
+autoticket state --user user1
 ```
 
 查看指定日期：
 
 ```bash
-node dist/cli/index.js state --date 2026-06-03
+autoticket state --date 2026-06-03
 ```
 
 每日任务和优惠券兑换执行后会自动写入状态文件：
@@ -329,13 +340,13 @@ TUI 中的 `查看任务状态` 默认显示全部账号，不受当前选中用
 使用配置文件中的默认兑换参数：
 
 ```bash
-node dist/cli/index.js exchange --user user1
+autoticket exchange --user user1
 ```
 
 命令行覆盖部分参数：
 
 ```bash
-node dist/cli/index.js exchange --user user1 --exchange-id 10 --start-at 07:00:00 --concurrency 5 --interval 50 --max-attempts 100
+autoticket exchange --user user1 --exchange-id 10 --start-at 07:00:00 --concurrency 5 --interval 50 --max-attempts 100
 ```
 
 参数说明：
@@ -428,18 +439,18 @@ TUI 中每日任务和优惠券兑换分开设置；每日任务的时间区间�
 启动常驻定时器：
 
 ```bash
-node dist/cli/index.js schedule run
+autoticket schedule run
 ```
 
 推荐使用 PM2 后台常驻：
 
 ```bash
 npm install -g pm2
-node dist/cli/index.js schedule start
-node dist/cli/index.js schedule restart
-node dist/cli/index.js schedule status
-node dist/cli/index.js schedule logs
-node dist/cli/index.js schedule stop
+autoticket schedule start
+autoticket schedule restart
+autoticket schedule status
+autoticket schedule logs
+autoticket schedule stop
 ```
 
 `schedule start` 会用 PM2 启动后台进程 `autoticket-schedule`，实际执行的是 `schedule run`。`schedule restart` 会先删除旧 PM2 进程记录，再按当前目录重新启动，适合迁移目录或重新构建后使用。电脑关机、睡眠或网络断开仍会影响准时性；请保持电脑唤醒、网络稳定。
@@ -447,8 +458,8 @@ node dist/cli/index.js schedule stop
 立即按计划用户执行一次：
 
 ```bash
-node dist/cli/index.js schedule once daily
-node dist/cli/index.js schedule once exchange
+autoticket schedule once daily
+autoticket schedule once exchange
 ```
 
 兑换任务会在配置的多个时间同步对多个用户发起；某个用户当天已经兑换成功后，后续场次会自动跳过该用户。
@@ -458,8 +469,8 @@ node dist/cli/index.js schedule once exchange
 查看每日任务随机执行时间：
 
 ```bash
-node dist/cli/index.js schedule daily-plan
-node dist/cli/index.js schedule daily-plan --date 2026-06-05
+autoticket schedule daily-plan
+autoticket schedule daily-plan --date 2026-06-05
 ```
 
 随机时间按账号分别生成，精确到秒，并保存在 `config/autoticket.state.json`。多账号会先随机分配账号对应的时间片段，再在片段内随机具体秒数，所以账号之间会尽量错开，但哪个账号落在哪个片段也是随机的。如果再次查看同一天同一账号，会复用已经生成的时间。TUI 中也可以通过 `定时任务设置 -> 查看明日每日时间` 查看。
@@ -467,7 +478,7 @@ node dist/cli/index.js schedule daily-plan --date 2026-06-05
 后台日志包含调度流水，例如下一次执行、每日任务每个步骤、签到等待、兑换每次尝试、任务完成摘要。查看方式：
 
 ```bash
-node dist/cli/index.js schedule logs
+autoticket schedule logs
 ```
 
 ## 14. 常见问题
@@ -476,7 +487,7 @@ node dist/cli/index.js schedule logs
 
 ```bash
 pnpm build
-node dist/cli/index.js web
+autoticket web
 ```
 
 然后打开：
@@ -490,7 +501,7 @@ http://127.0.0.1:3210
 说明指定用户还没有保存。请先通过短信登录或密码登录保存：
 
 ```bash
-node dist/cli/index.js login sms --user user1 --phone 13800000000 --code 123456
+autoticket login sms --user user1 --phone 13800000000 --code 123456
 ```
 
 ### 14.3 登录后没有自动写入配置

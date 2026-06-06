@@ -7,6 +7,9 @@
     "autoticket": "./dist/cli/index.js"
   },
   "scripts": {
+    "bootstrap": "pnpm install",
+    "build:all": "pnpm check",
+    "install:cli": "pnpm run build:all && npm link",
     "build": "tsup src/index.ts src/cli/index.ts src/tui/index.tsx --format esm --dts --clean --public-dir public",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
