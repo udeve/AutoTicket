@@ -129,6 +129,6 @@ describe("task state repository", () => {
     }];
 
     const text = formatTaskStatusSummary([{ id: "u1" }], summarizeTaskRuns(runs), "2026-06-03");
-    expect(text).toContain("优惠券兑换: SUCC 4元 07:00 并发5 最多100次");
+    expect(text).toContain("优惠券兑换: SUCC 4元 07:00 并发5 间隔50ms 最多100次");
   });
 });

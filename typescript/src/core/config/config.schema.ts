@@ -56,14 +56,20 @@ export const ScheduleConfigSchema = z.object({
     exchangeId: z.string().optional(),
     concurrency: z.number().int().positive().default(1),
     intervalMs: z.number().int().nonnegative().default(100),
+    intervalMaxMs: z.number().int().nonnegative().optional(),
     maxAttempts: z.number().int().positive().default(50),
+    requestTimeoutMs: z.number().int().positive().default(5000),
     stopAfterSuccess: z.boolean().default(true)
+  }).refine((exchange) => exchange.intervalMaxMs === undefined || exchange.intervalMaxMs >= exchange.intervalMs, {
+    message: "schedule.exchange.intervalMaxMs must be greater than or equal to intervalMs",
+    path: ["intervalMaxMs"]
   }).default({
     enabled: false,
     times: ["07:00:00", "11:30:00", "17:00:00"],
     concurrency: 1,
     intervalMs: 100,
     maxAttempts: 50,
+    requestTimeoutMs: 5000,
     stopAfterSuccess: true
   })
 });
@@ -76,8 +82,14 @@ export const AppConfigSchema = z.object({
       startAt: z.string().default("07:00:00"),
       concurrency: z.number().int().positive().default(1),
       intervalMs: z.number().int().nonnegative().default(100),
+      intervalMaxMs: z.number().int().nonnegative().optional(),
       maxAttempts: z.number().int().positive().default(50),
+      requestTimeoutMs: z.number().int().positive().default(5000),
       stopRules: z.array(ExchangeStopRuleSchema).default([...DEFAULT_EXCHANGE_STOP_RULES])
+    })
+    .refine((exchange) => exchange.intervalMaxMs === undefined || exchange.intervalMaxMs >= exchange.intervalMs, {
+      message: "exchange.intervalMaxMs must be greater than or equal to intervalMs",
+      path: ["intervalMaxMs"]
     })
     .default({
       exchangeId: "10",
@@ -85,6 +97,7 @@ export const AppConfigSchema = z.object({
       concurrency: 1,
       intervalMs: 100,
       maxAttempts: 50,
+      requestTimeoutMs: 5000,
       stopRules: [...DEFAULT_EXCHANGE_STOP_RULES]
     }),
   dingtalk: DingTalkConfigSchema.default({
@@ -110,6 +123,7 @@ export const AppConfigSchema = z.object({
       concurrency: 1,
       intervalMs: 100,
       maxAttempts: 50,
+      requestTimeoutMs: 5000,
       stopAfterSuccess: true
     }
   })

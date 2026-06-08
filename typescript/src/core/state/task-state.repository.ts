@@ -45,7 +45,9 @@ export type ExchangeRunMeta = {
   startAt?: string;
   concurrency?: number;
   intervalMs?: number;
+  intervalMaxMs?: number;
   maxAttempts?: number;
+  requestTimeoutMs?: number;
 };
 
 export interface TaskStatusFormatOptions {
@@ -211,9 +213,18 @@ function formatExchangeRunMeta(meta: Record<string, unknown> | ExchangeRunMeta |
     amount,
     typeof meta.startAt === "string" && meta.startAt ? formatExchangeStartTime(meta.startAt) : undefined,
     typeof meta.concurrency === "number" && meta.concurrency > 1 ? `并发${meta.concurrency}` : undefined,
+    formatExchangeIntervalMeta(meta),
+    typeof meta.requestTimeoutMs === "number" && meta.requestTimeoutMs !== 5000 ? `超时${meta.requestTimeoutMs}ms` : undefined,
     typeof meta.maxAttempts === "number" && meta.maxAttempts > 1 ? `最多${meta.maxAttempts}次` : undefined
   ].filter(Boolean);
   return items.length ? ` / ${items.join(" ")}` : "";
+}
+
+function formatExchangeIntervalMeta(meta: Record<string, unknown> | ExchangeRunMeta): string | undefined {
+  const intervalMs = typeof meta.intervalMs === "number" ? meta.intervalMs : undefined;
+  const intervalMaxMs = typeof meta.intervalMaxMs === "number" ? meta.intervalMaxMs : undefined;
+  if (intervalMs === undefined || intervalMs === 100 && intervalMaxMs === undefined) return undefined;
+  return intervalMaxMs !== undefined && intervalMaxMs !== intervalMs ? `间隔${intervalMs}-${intervalMaxMs}ms` : `间隔${intervalMs}ms`;
 }
 
 function formatRunLog(label: string, run: TaskRunRecord | undefined): string[] {

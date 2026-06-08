@@ -22,7 +22,7 @@ import { Menu } from "./components/Menu.js";
 import { TextPrompt } from "./components/TextPrompt.js";
 
 type Screen = "home" | "login" | "direct" | "sms" | "password" | "users" | "status" | "state" | "daily" | "exchange" | "confirmDaily" | "confirmExchange" | "settings" | "amount" | "startTime" | "schedule" | "scheduleUsers" | "scheduleDaily" | "scheduleDailyTime" | "scheduleDailyRangeStart" | "scheduleDailyRangeEnd" | "scheduleExchange" | "scheduleExchangeTimes" | "dingtalk" | "web" | "summary" | "message";
-type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "maxAttempts" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeIntervalMs" | "scheduleExchangeMaxAttempts" | "dingtalkWebhook" | "dingtalkSecret";
+type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeConcurrency" | "scheduleExchangeIntervalMs" | "scheduleExchangeIntervalMaxMs" | "scheduleExchangeMaxAttempts" | "scheduleExchangeRequestTimeoutMs" | "dingtalkWebhook" | "dingtalkSecret";
 type LoginScreen = "direct" | "sms" | "password";
 const parentScreen: Partial<Record<Screen, Screen>> = {
   login: "home",
@@ -173,9 +173,9 @@ function App() {
     setScreen("message");
   }
 
-  async function updateExchangeConfig(key: "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "maxAttempts", value: string) {
+  async function updateExchangeConfig(key: "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs", value: string) {
     if (!config) return;
-    const numericKeys = new Set(["concurrency", "intervalMs", "maxAttempts"]);
+    const numericKeys = new Set(["concurrency", "intervalMs", "intervalMaxMs", "maxAttempts", "requestTimeoutMs"]);
     let parsed: string | number = value;
     if (numericKeys.has(key)) {
       const numberValue = Number(value);
@@ -184,8 +184,18 @@ function App() {
         setScreen("message");
         return;
       }
-      if ((key === "concurrency" || key === "maxAttempts") && numberValue <= 0) {
+      if ((key === "concurrency" || key === "maxAttempts" || key === "requestTimeoutMs") && numberValue <= 0) {
         setMessage(`${key} 必须大于 0。`);
+        setScreen("message");
+        return;
+      }
+      if (key === "intervalMaxMs" && numberValue < config.exchange.intervalMs) {
+        setMessage("兑换间隔上限必须大于或等于间隔下限。");
+        setScreen("message");
+        return;
+      }
+      if (key === "intervalMs" && config.exchange.intervalMaxMs !== undefined && numberValue > config.exchange.intervalMaxMs) {
+        setMessage("兑换间隔下限不能大于间隔上限。");
         setScreen("message");
         return;
       }
@@ -311,11 +321,21 @@ function App() {
     navigateBack();
   }
 
-  async function updateScheduleExchangeValue(key: "intervalMs" | "maxAttempts", value: string) {
+  async function updateScheduleExchangeValue(key: "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs", value: string) {
     const parsed = parseNonNegativeInteger(value);
     if (parsed === undefined) return;
-    if (key === "maxAttempts" && parsed <= 0) {
-      setMessage("最大尝试次数必须大于 0。");
+    if ((key === "concurrency" || key === "maxAttempts" || key === "requestTimeoutMs") && parsed <= 0) {
+      setMessage(`${key === "concurrency" ? "最大并发数" : key === "maxAttempts" ? "最大尝试次数" : "请求超时"}必须大于 0。`);
+      setScreen("message");
+      return;
+    }
+    if (key === "intervalMaxMs" && parsed < (config?.schedule.exchange.intervalMs ?? 0)) {
+      setMessage("定时兑换间隔上限必须大于或等于间隔下限。");
+      setScreen("message");
+      return;
+    }
+    if (key === "intervalMs" && config?.schedule.exchange.intervalMaxMs !== undefined && parsed > config.schedule.exchange.intervalMaxMs) {
+      setMessage("定时兑换间隔下限不能大于间隔上限。");
       setScreen("message");
       return;
     }
@@ -334,7 +354,7 @@ function App() {
   function parseNonNegativeInteger(value: string): number | undefined {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
-      setMessage("每日任务间隔必须是非负整数。");
+      setMessage("请输入非负整数。");
       setScreen("message");
       return undefined;
     }
@@ -490,8 +510,8 @@ function App() {
             if (screen === "direct" || screen === "sms" || screen === "password") {
               updateLoginDraft(prompt.key, value);
             } else {
-              if (["concurrency", "intervalMs", "maxAttempts"].includes(prompt.key)) {
-                void updateExchangeConfig(prompt.key as "concurrency" | "intervalMs" | "maxAttempts", value);
+              if (["concurrency", "intervalMs", "intervalMaxMs", "maxAttempts", "requestTimeoutMs"].includes(prompt.key)) {
+                void updateExchangeConfig(prompt.key as "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs", value);
               } else if (prompt.key === "dingtalkWebhook") {
                 void updateDingTalkConfig("webhook", value);
               } else if (prompt.key === "dingtalkSecret") {
@@ -502,10 +522,16 @@ function App() {
                 void updateScheduleDailyValue("delayMs", value);
               } else if (prompt.key === "scheduleDailyCommentContent") {
                 void updateScheduleDailyCommentContent(value);
+              } else if (prompt.key === "scheduleExchangeConcurrency") {
+                void updateScheduleExchangeValue("concurrency", value);
               } else if (prompt.key === "scheduleExchangeIntervalMs") {
                 void updateScheduleExchangeValue("intervalMs", value);
+              } else if (prompt.key === "scheduleExchangeIntervalMaxMs") {
+                void updateScheduleExchangeValue("intervalMaxMs", value);
               } else if (prompt.key === "scheduleExchangeMaxAttempts") {
                 void updateScheduleExchangeValue("maxAttempts", value);
+              } else if (prompt.key === "scheduleExchangeRequestTimeoutMs") {
+                void updateScheduleExchangeValue("requestTimeoutMs", value);
               } else {
                 updateField(prompt.key, value);
               }
@@ -557,7 +583,7 @@ function Header({ config, currentUser, currentIntegral }: { config: AppConfig; c
       <InfoRow label="当前用户" value={currentUser ? `${redactText(currentUser.id)}${currentUser.name ? ` / ${redactText(currentUser.name)}` : ""}` : "未配置"} color={currentUser ? "green" : "yellow"} />
       <InfoRow label="会话状态" value={currentUser?.sesId ? "已保存" : "未保存"} color={currentUser?.sesId ? "green" : "yellow"} />
       <InfoRow label="当前积分" value={currentIntegral} color={currentIntegral === "查询失败" ? "yellow" : "cyan"} />
-      <InfoRow label="兑换配置" value={`面额=${formatExchangeAmount(config.exchange.exchangeId)} 时间=${formatExchangeStartTime(config.exchange.startAt)} 并发=${config.exchange.concurrency} 间隔=${config.exchange.intervalMs}ms 最大=${config.exchange.maxAttempts}`} />
+      <InfoRow label="兑换配置" value={`面额=${formatExchangeAmount(config.exchange.exchangeId)} 时间=${formatExchangeStartTime(config.exchange.startAt)} 并发=${config.exchange.concurrency} 间隔=${formatIntervalRange(config.exchange.intervalMs, config.exchange.intervalMaxMs)} 最大=${config.exchange.maxAttempts}`} />
       <InfoRow label="定时任务" value={formatScheduleHeader(config)} color={config.schedule.enabled ? "green" : "gray"} />
       <InfoRow label="钉钉通知" value={config.dingtalk.enabled ? "已启用" : "未启用"} color={config.dingtalk.enabled ? "green" : "gray"} />
     </Box>
@@ -697,7 +723,7 @@ function Exchange({ initialIndex, onHighlight, currentUser, config, runTask, nav
     const startedAt = new Date().toISOString();
     try {
       await client.warmup();
-      const exchangeMeta = { exchangeId: config.exchange.exchangeId, startAt: config.exchange.startAt, concurrency: config.exchange.concurrency, intervalMs: config.exchange.intervalMs, maxAttempts: config.exchange.maxAttempts };
+      const exchangeMeta = { exchangeId: config.exchange.exchangeId, startAt: config.exchange.startAt, concurrency: config.exchange.concurrency, intervalMs: config.exchange.intervalMs, intervalMaxMs: config.exchange.intervalMaxMs, maxAttempts: config.exchange.maxAttempts, requestTimeoutMs: config.exchange.requestTimeoutMs };
       const result = await new ExchangeScheduler(new ExchangeService(client)).run({ user: currentUser, ...exchangeMeta, stopRules: config.exchange.stopRules });
       const summary = summarizeExchangeRun(result);
       await stateRepo.append({ task: "exchange", userId: currentUser.id, status: summary.success ? "success" : "failure", startedAt, finishedAt: new Date().toISOString(), message: result.final?.msg ?? "未命中停止条件", meta: exchangeMeta, summary: { ...summary, raw: result } });
@@ -707,12 +733,12 @@ function Exchange({ initialIndex, onHighlight, currentUser, config, runTask, nav
       await stateRepo.append({ task: "exchange", userId: currentUser.id, status: "failure", startedAt, finishedAt: new Date().toISOString(), message: error instanceof Error ? error.message : String(error) });
       throw error;
     }
-  })) : undefined} />;
+  }, config.exchange.requestTimeoutMs)) : undefined} />;
 }
 
 function ExchangeSettings({ initialIndex, onHighlight, config, setPrompt, navigate, navigateBack }: ScreenProps & MenuNavProps & { config: AppConfig; navigate: (screen: Screen) => void }) {
   const e = config.exchange;
-  return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[{ label: `兑换面额: ${formatExchangeAmount(e.exchangeId)}`, value: "amount" }, { label: `开始时间: ${formatExchangeStartTime(e.startAt)}`, value: "startTime" }, { label: `并发数: ${e.concurrency}`, value: "concurrency" }, { label: `间隔 ms: ${e.intervalMs}`, value: "intervalMs" }, { label: `最大次数: ${e.maxAttempts}`, value: "maxAttempts" }, { label: "返回", value: "back" }]} onSelect={(item) => item.value === "back" ? navigateBack() : item.value === "amount" || item.value === "startTime" ? navigate(item.value as Screen) : setPrompt({ key: item.value as FieldKey, label: item.label })} />;
+  return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[{ label: `兑换面额: ${formatExchangeAmount(e.exchangeId)}`, value: "amount" }, { label: `开始时间: ${formatExchangeStartTime(e.startAt)}`, value: "startTime" }, { label: `并发数: ${e.concurrency}`, value: "concurrency" }, { label: `间隔下限 ms: ${e.intervalMs}`, value: "intervalMs" }, { label: `间隔上限 ms: ${e.intervalMaxMs ?? e.intervalMs}`, value: "intervalMaxMs" }, { label: `请求超时 ms: ${e.requestTimeoutMs}`, value: "requestTimeoutMs" }, { label: `最大次数: ${e.maxAttempts}`, value: "maxAttempts" }, { label: "返回", value: "back" }]} onSelect={(item) => item.value === "back" ? navigateBack() : item.value === "amount" || item.value === "startTime" ? navigate(item.value as Screen) : setPrompt({ key: item.value as FieldKey, label: item.label })} />;
 }
 
 function ExchangeAmount({ initialIndex, onHighlight, exchangeId, updateExchangeConfig, navigateBack }: MenuNavProps & { exchangeId: string; updateExchangeConfig: (exchangeId: string) => void; navigateBack: () => void }) {
@@ -810,7 +836,10 @@ function ScheduleExchangeSettings({ initialIndex, onHighlight, config, setPrompt
   return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[
     { label: `优惠券兑换: ${formatEnabled(exchange.enabled)}`, value: "toggle" },
     { label: `兑换场次: ${formatScheduleTimes(exchange.times)}`, value: "times" },
-    { label: `请求间隔 ms: ${exchange.intervalMs}`, value: "interval" },
+    { label: `最大并发数: ${exchange.concurrency}`, value: "concurrency" },
+    { label: `间隔下限 ms: ${exchange.intervalMs}`, value: "interval" },
+    { label: `间隔上限 ms: ${exchange.intervalMaxMs ?? exchange.intervalMs}`, value: "intervalMax" },
+    { label: `请求超时 ms: ${exchange.requestTimeoutMs}`, value: "timeout" },
     { label: `最大尝试次数: ${exchange.maxAttempts}`, value: "maxAttempts" },
     { label: `成功后跳过后续场次: ${exchange.stopAfterSuccess ? "是" : "否"}`, value: "stopAfterSuccess" },
     { label: "返回", value: "back" }
@@ -818,7 +847,10 @@ function ScheduleExchangeSettings({ initialIndex, onHighlight, config, setPrompt
     if (item.value === "back") navigateBack();
     else if (item.value === "toggle") updateScheduleConfig((old) => ({ ...old, schedule: { ...old.schedule, exchange: { ...old.schedule.exchange, enabled: !old.schedule.exchange.enabled } } }));
     else if (item.value === "times") navigate("scheduleExchangeTimes");
-    else if (item.value === "interval") setPrompt({ key: "scheduleExchangeIntervalMs", label: "定时兑换请求间隔 ms", initialValue: String(exchange.intervalMs) });
+    else if (item.value === "concurrency") setPrompt({ key: "scheduleExchangeConcurrency", label: "定时兑换最大并发数", initialValue: String(exchange.concurrency) });
+    else if (item.value === "interval") setPrompt({ key: "scheduleExchangeIntervalMs", label: "定时兑换请求间隔下限 ms", initialValue: String(exchange.intervalMs) });
+    else if (item.value === "intervalMax") setPrompt({ key: "scheduleExchangeIntervalMaxMs", label: "定时兑换请求间隔上限 ms", initialValue: String(exchange.intervalMaxMs ?? exchange.intervalMs) });
+    else if (item.value === "timeout") setPrompt({ key: "scheduleExchangeRequestTimeoutMs", label: "定时兑换请求超时 ms", initialValue: String(exchange.requestTimeoutMs) });
     else if (item.value === "maxAttempts") setPrompt({ key: "scheduleExchangeMaxAttempts", label: "定时兑换最大尝试次数", initialValue: String(exchange.maxAttempts) });
     else if (item.value === "stopAfterSuccess") updateScheduleConfig((old) => ({ ...old, schedule: { ...old.schedule, exchange: { ...old.schedule.exchange, stopAfterSuccess: !old.schedule.exchange.stopAfterSuccess } } }));
   }} />;
@@ -854,6 +886,10 @@ function ScheduleExchangeTimes({ initialIndex, onHighlight, config, toggleTime, 
 
 function formatScheduleTimes(times: string[]): string {
   return times.length ? times.map((time) => formatExchangeStartTime(time)).join(",") : "未选择";
+}
+
+function formatIntervalRange(intervalMs: number, intervalMaxMs?: number): string {
+  return intervalMaxMs !== undefined && intervalMaxMs !== intervalMs ? `${intervalMs}-${intervalMaxMs}ms` : `${intervalMs}ms`;
 }
 
 function formatDailyScheduleLabel(daily: AppConfig["schedule"]["daily"]): string {
@@ -930,8 +966,8 @@ function Summary({ config }: { config: AppConfig }) {
   return <Box flexDirection="column"><Text color="cyan">配置摘要</Text><Text>{JSON.stringify(redactSensitive(config), null, 2)}</Text></Box>;
 }
 
-async function withClient<T>(fn: (client: ApiClient) => Promise<T>): Promise<T> {
-  const client = new ApiClient();
+async function withClient<T>(fn: (client: ApiClient) => Promise<T>, timeoutMs?: number): Promise<T> {
+  const client = new ApiClient(timeoutMs ? { timeoutMs } : {});
   try {
     return await fn(client);
   } finally {

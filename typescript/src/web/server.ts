@@ -139,6 +139,7 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
       return;
     }
     const startedAt = new Date().toISOString();
+    const requestTimeoutMs = numberField(body, "requestTimeoutMs", config.exchange.requestTimeoutMs);
     await withClient(res, async (client) => {
       try {
         const result = await new TaskService(client).runDailyWorkflow(user, {
@@ -183,6 +184,7 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
       return;
     }
     const startedAt = new Date().toISOString();
+    const requestTimeoutMs = numberField(body, "requestTimeoutMs", config.exchange.requestTimeoutMs);
     await withClient(res, async (client) => {
       try {
         await client.warmup();
@@ -192,7 +194,9 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
           startAt: optionalStringField(body, "startAt") ?? config.exchange.startAt,
           concurrency: numberField(body, "concurrency", config.exchange.concurrency),
           intervalMs: numberField(body, "intervalMs", config.exchange.intervalMs),
-          maxAttempts: numberField(body, "maxAttempts", config.exchange.maxAttempts)
+          intervalMaxMs: optionalNumberField(body, "intervalMaxMs", config.exchange.intervalMaxMs),
+          maxAttempts: numberField(body, "maxAttempts", config.exchange.maxAttempts),
+          requestTimeoutMs
         };
         const result = await scheduler.run({
           user,
@@ -223,15 +227,15 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
         });
         throw error;
       }
-    });
+    }, requestTimeoutMs);
     return;
   }
 
   sendJson(res, 404, { error: "Not found" });
 }
 
-async function withClient(res: ServerResponse, fn: (client: ApiClient) => Promise<unknown>): Promise<void> {
-  const client = new ApiClient();
+async function withClient(res: ServerResponse, fn: (client: ApiClient) => Promise<unknown>, timeoutMs?: number): Promise<void> {
+  const client = new ApiClient(timeoutMs ? { timeoutMs } : {});
   try {
     const result = await fn(client);
     sendJson(res, 200, result);
@@ -324,6 +328,13 @@ function numberField(data: Record<string, unknown>, key: string, fallback: numbe
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.length > 0) return Number(value);
   return fallback;
+}
+
+function optionalNumberField(data: Record<string, unknown>, key: string, fallback?: number): number | undefined {
+  const value = data[key];
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function booleanField(data: Record<string, unknown>, key: string, fallback: boolean): boolean {

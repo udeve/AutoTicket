@@ -76,14 +76,17 @@ program
   .option("--exchange-id <id>", "exchange id")
   .option("--start-at <time>", "target time, HH:mm:ss")
   .option("--concurrency <n>", "parallel request count", Number)
-  .option("--interval <ms>", "interval between batches", Number)
+  .option("--interval <ms>", "minimum interval between launching attempts", Number)
+  .option("--interval-max <ms>", "maximum randomized interval between launching attempts", Number)
   .option("--max-attempts <n>", "maximum attempts", Number)
+  .option("--timeout <ms>", "single exchange request timeout", Number)
   .option("--force", "run even if exchange already ran today")
   .action(async (options) => {
     const repo = new ConfigRepository(options.config);
     const config = await repo.load();
     const user = await repo.getUser(options.user);
-    const client = new ApiClient();
+    const requestTimeoutMs = options.timeout ?? config.exchange.requestTimeoutMs;
+    const client = new ApiClient({ timeoutMs: requestTimeoutMs });
     const exchangeService = new ExchangeService(client);
     const scheduler = new ExchangeScheduler(exchangeService);
     const notifier = new DingTalkNotifier(config.dingtalk);
@@ -104,7 +107,9 @@ program
         startAt: options.startAt ?? config.exchange.startAt,
         concurrency: options.concurrency ?? config.exchange.concurrency,
         intervalMs: options.interval ?? config.exchange.intervalMs,
-        maxAttempts: options.maxAttempts ?? config.exchange.maxAttempts
+        intervalMaxMs: options.intervalMax ?? config.exchange.intervalMaxMs,
+        maxAttempts: options.maxAttempts ?? config.exchange.maxAttempts,
+        requestTimeoutMs
       };
       const result = await scheduler.run({
         user,

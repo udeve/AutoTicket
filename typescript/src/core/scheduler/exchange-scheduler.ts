@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import type { ExchangeAttemptResult, ExchangeSchedulerOptions, ExchangeStopRule } from "../types.js";
 import { parseTodayTime, sleep, waitUntil } from "../utils/time.js";
 import { ExchangeService, type ExchangeResponse } from "../services/exchange.service.js";
@@ -30,19 +31,52 @@ export class ExchangeScheduler {
     const attempts: ExchangeAttemptResult<ExchangeResponse>[] = [];
     let nextAttempt = 1;
     let final: ExchangeAttemptResult<ExchangeResponse> | undefined;
+    const completed: ExchangeAttemptResult<ExchangeResponse>[] = [];
+    let inFlight = 0;
+    let notifyCompleted: (() => void) | undefined;
+
+    const runTrackedAttempt = (attempt: number) => {
+      inFlight += 1;
+      void this.runAttempt(options, attempt).then((result) => {
+        completed.push(result);
+      }).finally(() => {
+        inFlight -= 1;
+        notifyCompleted?.();
+        notifyCompleted = undefined;
+      });
+    };
+
+    const nextCompletedAttempt = async () => {
+      if (!completed.length) {
+        await new Promise<void>((resolve) => {
+          notifyCompleted = resolve;
+        });
+      }
+      const result = completed.shift();
+      if (!result) throw new Error("Exchange scheduler completion queue is empty.");
+      attempts.push(result);
+      options.onAttempt?.(result);
+      if (result.isFinal && !final) final = result;
+      return result;
+    };
 
     while (!final && nextAttempt <= options.maxAttempts) {
-      const batchSize = Math.min(options.concurrency, options.maxAttempts - nextAttempt + 1);
-      const batch = Array.from({ length: batchSize }, (_, index) => this.runAttempt(options, nextAttempt + index));
-      const results = await Promise.all(batch);
-      attempts.push(...results);
-      for (const result of results) options.onAttempt?.(result);
-      final = results.find((result) => result.isFinal);
-      nextAttempt += batchSize;
-
-      if (!final && nextAttempt <= options.maxAttempts && options.intervalMs > 0) {
-        await sleep(options.intervalMs);
+      while (!final && inFlight >= options.concurrency) {
+        await nextCompletedAttempt();
       }
+      if (final || nextAttempt > options.maxAttempts) break;
+
+      runTrackedAttempt(nextAttempt);
+      nextAttempt += 1;
+
+      const intervalMs = randomIntervalMs(options.intervalMs, options.intervalMaxMs);
+      if (!final && nextAttempt <= options.maxAttempts && intervalMs > 0) {
+        await sleep(intervalMs);
+      }
+    }
+
+    while (inFlight > 0 || completed.length > 0) {
+      await nextCompletedAttempt();
     }
 
     return { attempts, final };
@@ -94,9 +128,10 @@ export class ExchangeScheduler {
 }
 
 export function summarizeExchangeRun(result: ExchangeSchedulerRunResult): ExchangeRunSummary {
-  const final = result.final;
+  const successfulFinal = result.attempts.find((attempt) => attempt.finalStatus === "success");
+  const final = successfulFinal ?? result.final;
   const last = final ?? result.attempts.at(-1);
-  const success = final?.finalStatus === "success";
+  const success = Boolean(successfulFinal);
   return {
     success,
     message: final ? success ? "优惠券兑换成功。" : "优惠券兑换已停止但未成功。" : "优惠券兑换未命中停止条件。",
@@ -108,6 +143,13 @@ export function summarizeExchangeRun(result: ExchangeSchedulerRunResult): Exchan
     msg: last?.msg,
     error: last?.error
   };
+}
+
+export function randomIntervalMs(minMs: number, maxMs = minMs): number {
+  const min = Math.max(0, Math.floor(minMs));
+  const max = Math.max(min, Math.floor(maxMs));
+  if (max <= 0) return 0;
+  return randomInt(min, max + 1);
 }
 
 function findMatchedStopRule(msg: string | undefined, rules: ExchangeStopRule[]): ExchangeStopRule | undefined {

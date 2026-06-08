@@ -180,15 +180,17 @@ export class ScheduleService {
       return;
     }
 
-    const client = new ApiClient();
-    const startedAt = new Date().toISOString();
     const exchangeMeta = {
       exchangeId: this.options.config.schedule.exchange.exchangeId ?? this.options.config.exchange.exchangeId,
       startAt: startAt ?? this.options.config.exchange.startAt,
       concurrency: this.options.config.schedule.exchange.concurrency ?? this.options.config.exchange.concurrency,
       intervalMs: this.options.config.schedule.exchange.intervalMs ?? this.options.config.exchange.intervalMs,
-      maxAttempts: this.options.config.schedule.exchange.maxAttempts ?? this.options.config.exchange.maxAttempts
+      intervalMaxMs: this.options.config.schedule.exchange.intervalMaxMs ?? this.options.config.exchange.intervalMaxMs,
+      maxAttempts: this.options.config.schedule.exchange.maxAttempts ?? this.options.config.exchange.maxAttempts,
+      requestTimeoutMs: this.options.config.schedule.exchange.requestTimeoutMs ?? this.options.config.exchange.requestTimeoutMs
     };
+    const client = new ApiClient({ timeoutMs: exchangeMeta.requestTimeoutMs });
+    const startedAt = new Date().toISOString();
     try {
       this.logger(`${user.id} 优惠券兑换开始: 面额=${exchangeMeta.exchangeId} 开始=${exchangeMeta.startAt} 并发=${exchangeMeta.concurrency} 间隔=${exchangeMeta.intervalMs}ms 最大=${exchangeMeta.maxAttempts}`);
       await client.warmup();

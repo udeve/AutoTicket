@@ -40,7 +40,9 @@ export interface ExchangeSchedulerOptions extends ExchangeOptions {
   startAt?: string;
   concurrency: number;
   intervalMs: number;
+  intervalMaxMs?: number;
   maxAttempts: number;
+  requestTimeoutMs?: number;
   stopRules: ExchangeStopRule[];
   onAttempt?: (result: ExchangeAttemptResult) => void;
 }

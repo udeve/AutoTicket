@@ -11,6 +11,7 @@ describe("config schema", () => {
     expect(config.exchange.exchangeId).toBe("10");
     expect(config.exchange.startAt).toBe("07:00:00");
     expect(config.exchange.concurrency).toBe(1);
+    expect(config.exchange.requestTimeoutMs).toBe(5000);
     expect(config.exchange.stopRules).toContainEqual({ match: "每天最多兑换", status: "success" });
     expect(config.exchange.stopRules).toContainEqual({ match: "手慢啦", status: "failure" });
     expect(config.schedule.enabled).toBe(false);
@@ -21,6 +22,7 @@ describe("config schema", () => {
     expect(config.schedule.exchange.times).toEqual(["07:00:00", "11:30:00", "17:00:00"]);
     expect(config.schedule.exchange.intervalMs).toBe(100);
     expect(config.schedule.exchange.maxAttempts).toBe(50);
+    expect(config.schedule.exchange.requestTimeoutMs).toBe(5000);
     expect(config.dingtalk.enabled).toBe(false);
   });
 
@@ -37,6 +39,24 @@ describe("config schema", () => {
         daily: {
           rangeStartHour: 8,
           rangeEndHour: 7
+        }
+      }
+    })).toThrow();
+  });
+
+  it("rejects invalid exchange interval ranges", () => {
+    expect(() => AppConfigSchema.parse({
+      exchange: {
+        intervalMs: 200,
+        intervalMaxMs: 100
+      }
+    })).toThrow();
+
+    expect(() => AppConfigSchema.parse({
+      schedule: {
+        exchange: {
+          intervalMs: 200,
+          intervalMaxMs: 100
         }
       }
     })).toThrow();
