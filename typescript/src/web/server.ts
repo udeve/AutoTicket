@@ -141,7 +141,10 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
     const startedAt = new Date().toISOString();
     await withClient(res, async (client) => {
       try {
-        const result = await new TaskService(client).runDailyWorkflow(user, numberField(body, "delayMs", 1000));
+        const result = await new TaskService(client).runDailyWorkflow(user, {
+          delayMs: numberField(body, "delayMs", config.schedule.daily.delayMs),
+          commentContent: config.schedule.daily.commentContent
+        });
         const summary = summarizeDailyWorkflow(result);
         await stateRepo.append({
           task: "daily",

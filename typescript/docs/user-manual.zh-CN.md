@@ -262,6 +262,8 @@ CLI、TUI、WebUI 默认展示每个步骤的成功/失败摘要。TUI 执行时
 
 完整原始响应会保存在任务状态记录的 `summary.raw` 中，便于排查问题。
 
+每日任务留言内容来自配置 `schedule.daily.commentContent`，默认是 `点赞`。可以在 TUI 的“定时任务设置 -> 每日任务设置 -> 留言内容”中修改。当前评论文章使用固定文章 ID `related_id=1232`，程序没有动态选择文章。
+
 执行命令：
 
 ```bash
@@ -408,7 +410,8 @@ autoticket exchange --user user1 --exchange-id 10 --start-at 07:00:00 --concurre
       "time": "08:30:00",
       "rangeStartHour": 8,
       "rangeEndHour": 10,
-      "delayMs": 1000
+      "delayMs": 1000,
+      "commentContent": "点赞"
     },
     "exchange": {
       "enabled": true,
@@ -431,6 +434,8 @@ autoticket exchange --user user1 --exchange-id 10 --start-at 07:00:00 --concurre
 TUI 中每日任务和优惠券兑换分开设置；每日任务的时间区间通过小时选择框设置，优惠券兑换继续使用固定场次多选。
 
 `schedule.daily.delayMs` 是每日任务步骤之间随机等待的下限，上限自动为 `delayMs + 1000`。默认配置 `1000` 表示每次在登录签到之后、每次签到之后随机等待 `1000~2000ms`，再进入下一项。
+
+`schedule.daily.commentContent` 是每日任务评论内容，默认 `点赞`。定时任务、CLI、TUI 和 WebUI 执行每日任务时都会使用这一配置。
 
 定时兑换有独立的请求间隔和最大尝试次数，默认 `intervalMs=100`、`maxAttempts=50`。这可以避免活动刚开始时接口短暂返回“活动还未开始”就立即结束。
 

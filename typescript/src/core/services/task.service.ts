@@ -74,7 +74,7 @@ export class TaskService {
     return response.data;
   }
 
-  async comment(user: SessionUser, content = "好") {
+  async comment(user: SessionUser, content = "点赞") {
     const response = await this.client.postEncrypted<TaskResponse>(ENDPOINTS.comment, {
       ...this.common(user),
       timestamp: nowTs(),
@@ -98,7 +98,7 @@ export class TaskService {
   async runDailyWorkflow(user: SessionUser, options: DailyWorkflowOptions | number = 1000): Promise<DailyWorkflowResult> {
     const delayMinMs = typeof options === "number" ? options : options.delayMs ?? 1000;
     const delayMaxMs = typeof options === "number" ? delayMinMs + 1000 : options.delayMaxMs ?? delayMinMs + 1000;
-    const commentContent = typeof options === "number" ? "好" : options.commentContent ?? "好";
+    const commentContent = typeof options === "number" ? "点赞" : options.commentContent ?? "点赞";
     const includeIntegralSnapshot = typeof options === "number" ? true : options.includeIntegralSnapshot ?? true;
     const onStep = typeof options === "number" ? undefined : options.onStep;
     const onDelay = typeof options === "number" ? undefined : options.onDelay;

@@ -18,7 +18,7 @@ describe("task service summaries", () => {
         { key: "signin1", label: "签到 1/3", success: true, result: "0", msg: "签到成功" },
         { key: "signin2", label: "签到 2/3", success: true, result: "0", msg: "签到成功" },
         { key: "signin3", label: "签到 3/3", success: true, result: "0", msg: "签到成功" },
-        { key: "comment", label: "发表评论", success: true, result: "0", msg: "评论成功", details: ["内容: 好"] },
+        { key: "comment", label: "发表评论", success: true, result: "0", msg: "评论成功", details: ["内容: 点赞"] },
         { key: "query", label: "积分查询", success: true, result: "0", msg: "积分查询成功", details: ["积分: 10 -> 16"] }
       ]
     };
@@ -27,7 +27,7 @@ describe("task service summaries", () => {
     const text = formatDailyWorkflowSummary(summary);
     expect(summary.success).toBe(true);
     expect(text).toContain("[成功] 签到 1/3: 签到成功");
-    expect(text).toContain("[成功] 发表评论: 评论成功（内容: 好）");
+    expect(text).toContain("[成功] 发表评论: 评论成功（内容: 点赞）");
     expect(text).toContain("[成功] 积分查询: 积分查询成功（积分: 10 -> 16）");
   });
 
@@ -77,6 +77,33 @@ describe("task service summaries", () => {
       { delayMs: 1, nextLabel: "签到 3/3" },
       { delayMs: 1, nextLabel: "发表评论" }
     ]);
+  });
+
+  it("uses configured comment content in the daily workflow", async () => {
+    const requests: Array<{ related_id?: string; content?: string }> = [];
+    const responses: TaskResponse[] = [
+      { result: "0", msg: "查询成功", remain_integral: "16" },
+      { result: "0", msg: "登录成功" },
+      { result: "0", msg: "签到成功" },
+      { result: "0", msg: "签到成功" },
+      { result: "0", msg: "签到成功" },
+      { result: "0", msg: "留言成功" },
+      { result: "0", msg: "查询成功", remain_integral: "20" }
+    ];
+    const client = {
+      postEncrypted: async (_endpoint: string, payload: { related_id?: string; content?: string }) => {
+        requests.push(payload);
+        return { data: responses.shift() };
+      }
+    };
+
+    const result = await new TaskService(client as never).runDailyWorkflow({ id: "u1", loginName: "u1", sesId: "s1" }, {
+      delayMs: 0,
+      commentContent: "学习打卡"
+    });
+
+    expect(result.steps.find((step) => step.key === "comment")?.details).toEqual(["内容: 学习打卡"]);
+    expect(requests.find((payload) => payload.related_id === "1232")?.content).toBe("学习打卡");
   });
 
   it("generates random daily step delay inside inclusive range", () => {

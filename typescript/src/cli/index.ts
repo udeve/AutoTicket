@@ -165,7 +165,7 @@ program
     }
 
     try {
-      const result = await taskService.runDailyWorkflow(user, { delayMs: options.delay });
+      const result = await taskService.runDailyWorkflow(user, { delayMs: options.delay, commentContent: config.schedule.daily.commentContent });
       const summary = summarizeDailyWorkflow(result);
       await stateRepo.append({
         task: "daily",

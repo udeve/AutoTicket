@@ -202,13 +202,15 @@ CLI / WebUI / TUI daily
       -> random delay
       -> signin(type=5) x 3
           -> each signin 后 random delay
-      -> comment(content="好")
+      -> comment(related_id="1232", content=schedule.daily.commentContent)
       -> queryIntegral()
   -> 输出结果
   -> 钉钉通知
 ```
 
 每日任务步骤之间不是并发执行。登录签到后、每次签到后都会随机等待一段时间再进入下一项；默认下限 `delayMs=1000`，上限自动为 `delayMs + 1000`，即默认 `1000~2000ms`。
+
+评论步骤当前使用固定文章 ID `related_id=1232`。留言内容来自 `schedule.daily.commentContent`，默认是 `点赞`，可以在 TUI 的每日任务设置中修改。
 
 ### 4.3 登录流程
 

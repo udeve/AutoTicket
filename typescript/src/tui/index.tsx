@@ -22,7 +22,7 @@ import { Menu } from "./components/Menu.js";
 import { TextPrompt } from "./components/TextPrompt.js";
 
 type Screen = "home" | "login" | "direct" | "sms" | "password" | "users" | "status" | "state" | "daily" | "exchange" | "confirmDaily" | "confirmExchange" | "settings" | "amount" | "startTime" | "schedule" | "scheduleUsers" | "scheduleDaily" | "scheduleDailyTime" | "scheduleDailyRangeStart" | "scheduleDailyRangeEnd" | "scheduleExchange" | "scheduleExchangeTimes" | "dingtalk" | "web" | "summary" | "message";
-type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "maxAttempts" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleExchangeIntervalMs" | "scheduleExchangeMaxAttempts" | "dingtalkWebhook" | "dingtalkSecret";
+type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "maxAttempts" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeIntervalMs" | "scheduleExchangeMaxAttempts" | "dingtalkWebhook" | "dingtalkSecret";
 type LoginScreen = "direct" | "sms" | "password";
 const parentScreen: Partial<Record<Screen, Screen>> = {
   login: "home",
@@ -247,6 +247,25 @@ function App() {
         daily: {
           ...old.schedule.daily,
           [key]: parsed
+        }
+      }
+    }));
+  }
+
+  async function updateScheduleDailyCommentContent(value: string) {
+    const content = value.trim();
+    if (!content) {
+      setMessage("每日任务留言内容不能为空。");
+      setScreen("message");
+      return;
+    }
+    await updateScheduleConfig((old) => ({
+      ...old,
+      schedule: {
+        ...old.schedule,
+        daily: {
+          ...old.schedule.daily,
+          commentContent: content
         }
       }
     }));
@@ -481,6 +500,8 @@ function App() {
                 void updateScheduleDailyValue("time", value);
               } else if (prompt.key === "scheduleDailyDelayMs") {
                 void updateScheduleDailyValue("delayMs", value);
+              } else if (prompt.key === "scheduleDailyCommentContent") {
+                void updateScheduleDailyCommentContent(value);
               } else if (prompt.key === "scheduleExchangeIntervalMs") {
                 void updateScheduleExchangeValue("intervalMs", value);
               } else if (prompt.key === "scheduleExchangeMaxAttempts") {
@@ -654,6 +675,7 @@ function Daily({ initialIndex, onHighlight, currentUser, config, runTask, update
     try {
       const steps: DailyWorkflowStepResult[] = [];
       const result = await withClient((client) => new TaskService(client).runDailyWorkflow(currentUser, {
+        commentContent: config.schedule.daily.commentContent,
         onStep: (step) => {
           steps.push(step);
           updateMessage(`每日任务执行中...\n${formatDailyWorkflowSummary({ success: steps.every((item) => item.success), message: "已完成步骤", steps })}`);
@@ -768,6 +790,7 @@ function ScheduleDailySettings({ initialIndex, onHighlight, config, setPrompt, n
     { label: `每日任务: ${formatEnabled(daily.enabled)}`, value: "toggle" },
     { label: `执行方式: ${daily.mode === "fixed" ? "固定时间" : "时间区间随机"}`, value: "mode" },
     ...timeItems,
+    { label: `留言内容: ${daily.commentContent}`, value: "commentContent" },
     { label: `每日任务间隔 ms: ${daily.delayMs}`, value: "delay" },
     { label: "返回", value: "back" }
   ]} onSelect={(item) => {
@@ -777,6 +800,7 @@ function ScheduleDailySettings({ initialIndex, onHighlight, config, setPrompt, n
     else if (item.value === "fixedTime") navigate("scheduleDailyTime");
     else if (item.value === "rangeStart") navigate("scheduleDailyRangeStart");
     else if (item.value === "rangeEnd") navigate("scheduleDailyRangeEnd");
+    else if (item.value === "commentContent") setPrompt({ key: "scheduleDailyCommentContent", label: "每日任务留言内容", initialValue: daily.commentContent });
     else if (item.value === "delay") setPrompt({ key: "scheduleDailyDelayMs", label: "每日任务间隔 ms", initialValue: String(daily.delayMs) });
   }} />;
 }

@@ -17,6 +17,7 @@ describe("config schema", () => {
     expect(config.schedule.daily.mode).toBe("fixed");
     expect(config.schedule.daily.rangeStartHour).toBe(8);
     expect(config.schedule.daily.rangeEndHour).toBe(10);
+    expect(config.schedule.daily.commentContent).toBe("点赞");
     expect(config.schedule.exchange.times).toEqual(["07:00:00", "11:30:00", "17:00:00"]);
     expect(config.schedule.exchange.intervalMs).toBe(100);
     expect(config.schedule.exchange.maxAttempts).toBe(50);

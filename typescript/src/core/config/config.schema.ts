@@ -36,7 +36,8 @@ export const ScheduleConfigSchema = z.object({
     time: z.string().default("08:30:00"),
     rangeStartHour: z.number().int().min(0).max(23).default(8),
     rangeEndHour: z.number().int().min(0).max(23).default(10),
-    delayMs: z.number().int().nonnegative().default(1000)
+    delayMs: z.number().int().nonnegative().default(1000),
+    commentContent: z.string().min(1).default("点赞")
   }).refine((daily) => daily.rangeEndHour > daily.rangeStartHour, {
     message: "schedule.daily.rangeEndHour must be greater than rangeStartHour",
     path: ["rangeEndHour"]
@@ -46,7 +47,8 @@ export const ScheduleConfigSchema = z.object({
     time: "08:30:00",
     rangeStartHour: 8,
     rangeEndHour: 10,
-    delayMs: 1000
+    delayMs: 1000,
+    commentContent: "点赞"
   }),
   exchange: z.object({
     enabled: z.boolean().default(false),
@@ -99,7 +101,8 @@ export const AppConfigSchema = z.object({
       time: "08:30:00",
       rangeStartHour: 8,
       rangeEndHour: 10,
-      delayMs: 1000
+      delayMs: 1000,
+      commentContent: "点赞"
     },
     exchange: {
       enabled: false,

@@ -141,6 +141,7 @@ export class ScheduleService {
       this.logger(`${user.id} 每日任务开始。`);
       const result = await new TaskService(client).runDailyWorkflow(user, {
         delayMs: this.options.config.schedule.daily.delayMs,
+        commentContent: this.options.config.schedule.daily.commentContent,
         onStep: (step) => this.logger(formatDailyStepLog(user.id, step)),
         onDelay: (delayMs, nextLabel) => this.logger(`${user.id} 随机等待 ${delayMs}ms 后执行 ${nextLabel}。`)
       });
