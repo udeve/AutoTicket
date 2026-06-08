@@ -13,7 +13,9 @@
     "startAt": "07:00:00",
     "concurrency": 5,
     "intervalMs": 50,
+    "intervalMaxMs": 150,
     "maxAttempts": 100,
+    "requestTimeoutMs": 3000,
     "stopRules": [
       {
         "match": "兑换中",
@@ -51,7 +53,8 @@
       "time": "08:30:00",
       "rangeStartHour": 8,
       "rangeEndHour": 10,
-      "delayMs": 1000
+      "delayMs": 1000,
+      "commentContent": "点赞"
     },
     "exchange": {
       "enabled": false,
@@ -62,7 +65,9 @@
       ],
       "concurrency": 1,
       "intervalMs": 100,
+      "intervalMaxMs": 100,
       "maxAttempts": 50,
+      "requestTimeoutMs": 5000,
       "stopAfterSuccess": true
     }
   }

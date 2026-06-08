@@ -70,7 +70,9 @@ config/autoticket.json
     "startAt": "07:00:00",
     "concurrency": 5,
     "intervalMs": 50,
+    "intervalMaxMs": 150,
     "maxAttempts": 100,
+    "requestTimeoutMs": 3000,
     "stopRules": [
       { "match": "兑换中", "status": "success" },
       { "match": "兑换成功", "status": "success" },
@@ -93,14 +95,17 @@ config/autoticket.json
       "time": "08:30:00",
       "rangeStartHour": 8,
       "rangeEndHour": 10,
-      "delayMs": 1000
+      "delayMs": 1000,
+      "commentContent": "点赞"
     },
     "exchange": {
       "enabled": false,
       "times": ["07:00:00", "11:30:00", "17:00:00"],
       "concurrency": 1,
       "intervalMs": 100,
+      "intervalMaxMs": 100,
       "maxAttempts": 50,
+      "requestTimeoutMs": 5000,
       "stopAfterSuccess": true
     }
   }
@@ -348,7 +353,7 @@ autoticket exchange --user user1
 命令行覆盖部分参数：
 
 ```bash
-autoticket exchange --user user1 --exchange-id 10 --start-at 07:00:00 --concurrency 5 --interval 50 --max-attempts 100
+autoticket exchange --user user1 --exchange-id 10 --start-at 07:00:00 --concurrency 5 --interval 50 --interval-max 150 --timeout 3000 --max-attempts 100
 ```
 
 参数说明：
@@ -359,13 +364,15 @@ autoticket exchange --user user1 --exchange-id 10 --start-at 07:00:00 --concurre
 | `--user` | 使用哪个用户配置 |
 | `--exchange-id` | 覆盖配置中的兑换面额 ID，`9=2元`、`10=4元`、`11=6元` |
 | `--start-at` | 覆盖配置中的开始时间。TUI 和 WebUI 使用固定选项 `07:00`、`11:30`、`17:00`；CLI 自动化可传 `HH:mm:ss` |
-| `--concurrency` | 覆盖并发数 |
-| `--interval` | 覆盖批次间隔，单位毫秒 |
+| `--concurrency` | 覆盖最大同时在飞请求数 |
+| `--interval` | 覆盖新请求发射间隔下限，单位毫秒 |
+| `--interval-max` | 覆盖新请求发射间隔上限，单位毫秒；不传时等于 `--interval` |
+| `--timeout` | 覆盖单次兑换请求超时时间，单位毫秒 |
 | `--max-attempts` | 覆盖最大尝试次数 |
 
 执行结束后，终端会输出摘要。如果没有命中停止条件，`final` 会是 `null`。
 
-兑换响应命中 `stopRules` 后会停止当前账号当前轮次；`status` 为 `success` 时状态记录为 `SUCC`，`status` 为 `failure` 时状态记录为 `FAIL`。例如 `手慢啦` 会停止继续请求，但会记录为失败。
+兑换请求采用滚动并发模式：每隔 `intervalMs~intervalMaxMs` 之间的随机间隔尝试发起一个新请求，同时最多保留 `concurrency` 个请求在飞。某个请求超时不会阻塞后续请求继续按节拍发起。兑换响应命中 `stopRules` 后会停止当前账号当前轮次继续发新请求；只要本轮任意尝试命中过 `success` 规则，状态记录为 `SUCC`。如果只命中过 `failure` 规则，例如 `手慢啦`，则记录为 `FAIL`。
 
 ## 12. 钉钉通知
 
@@ -437,7 +444,7 @@ TUI 中每日任务和优惠券兑换分开设置；每日任务的时间区间�
 
 `schedule.daily.commentContent` 是每日任务评论内容，默认 `点赞`。定时任务、CLI、TUI 和 WebUI 执行每日任务时都会使用这一配置。
 
-定时兑换有独立的请求间隔和最大尝试次数，默认 `intervalMs=100`、`maxAttempts=50`。这可以避免活动刚开始时接口短暂返回“活动还未开始”就立即结束。
+定时兑换有独立的最大并发数、请求发射间隔区间、请求超时和最大尝试次数，默认 `concurrency=1`、`intervalMs=100`、`intervalMaxMs=100`、`requestTimeoutMs=5000`、`maxAttempts=50`。请求采用滚动并发模式，某个请求超时不会阻塞后续请求继续按间隔发起。
 
 定时兑换复用全局 `exchange.stopRules` 判断是否停止和本轮结果状态；`schedule.exchange` 只保存定时执行相关参数，避免同一套停止规则在配置里重复维护。
 

@@ -78,7 +78,9 @@ CLI 只负责参数解析、配置加载、服务编排和结果输出，不直�
 - `exchange.startAt`: `"07:00:00"`，TUI/WebUI 通过固定时间选项选择；固定场次沿用旧 Python GUI 的 `07:00`、`11:30`、`17:00`
 - `exchange.concurrency`: `1`
 - `exchange.intervalMs`: `100`
+- `exchange.intervalMaxMs`: 默认不设置；设置后兑换请求发射间隔会在 `intervalMs~intervalMaxMs` 之间随机
 - `exchange.maxAttempts`: `50`
+- `exchange.requestTimeoutMs`: `5000`
 - `exchange.stopRules`: 命中消息后的停止规则，例如 `{ "match": "手慢啦", "status": "failure" }`
 - `dingtalk.enabled`: `false`
 
@@ -145,10 +147,10 @@ HTTP 客户端使用 `undici`：
 兑换调度器负责高性能兑换执行：
 
 - 支持指定开始时间 `startAt`。
-- 支持并发批次 `concurrency`。
-- 支持批次间隔 `intervalMs`。
+- 支持滚动并发 `concurrency`，限制同时在飞的最大请求数。
+- 支持发射间隔 `intervalMs~intervalMaxMs`，每次按区间随机产生等待时间，不会因为某个请求超时而阻塞后续请求发起。
 - 支持最大尝试次数 `maxAttempts`。
-- 支持停止规则 `stopRules`，命中后停止当前轮次，并按规则记录成功或失败。
+- 支持停止规则 `stopRules`，命中后停止发起新请求；只要本轮任意尝试命中过成功规则，最终状态就是成功。
 - 支持每次尝试的流水回调，用于 PM2 日志展示兑换过程。
 
 调度器不直接构造 HTTP 请求，而是调用 `ExchangeService.exchangeOnce()`。这样调度逻辑和接口逻辑保持分离。
