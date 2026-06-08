@@ -103,6 +103,32 @@ button:hover {
   flex: 1;
 }
 
+.captcha-preview {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #dfe3e8;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.captcha-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  min-height: 48px;
+  border: 1px solid #ccd1d7;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.captcha-meta {
+  margin-top: 8px;
+  color: #5f6368;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .user-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

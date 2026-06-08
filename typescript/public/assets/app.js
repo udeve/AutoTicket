@@ -1,6 +1,9 @@
 const output = document.querySelector("#output");
 const users = document.querySelector("#users");
 const stateOutput = document.querySelector("#stateOutput");
+const captchaPreview = document.querySelector("#captchaPreview");
+const captchaImage = document.querySelector("#captchaImage");
+const captchaMeta = document.querySelector("#captchaMeta");
 
 document.querySelector("#refreshConfig").addEventListener("click", () => handleAction(loadConfig));
 document.querySelector("#refreshState").addEventListener("click", () => handleAction(loadState));
@@ -75,6 +78,9 @@ async function submitLogin(action) {
     sms: "/api/login/sms"
   };
   const result = await api(paths[action], form);
+  if (action === "captcha") {
+    renderCaptcha(result);
+  }
   write(result);
   await loadConfig();
 }
@@ -129,6 +135,27 @@ function formData(selector) {
 
 function write(data) {
   output.textContent = typeof data === "string" ? data : data?.text ?? JSON.stringify(data, null, 2);
+}
+
+function renderCaptcha(result) {
+  const data = result?.data ?? result?.envelope ?? result;
+  const image = data?.img;
+  const imgUniCode = data?.imgUniCode;
+  if (!image || !captchaPreview || !captchaImage || !captchaMeta) return;
+
+  const cleanImage = String(image).replace(/\s+/g, "");
+  captchaImage.src = cleanImage.startsWith("data:")
+    ? cleanImage
+    : `data:image/jpeg;base64,${cleanImage}`;
+  captchaPreview.hidden = false;
+
+  if (imgUniCode) {
+    const input = document.querySelector("#loginForm [name='imgUniCode']");
+    if (input) input.value = imgUniCode;
+    captchaMeta.textContent = `验证码编号已填入: ${imgUniCode}`;
+  } else {
+    captchaMeta.textContent = "请输入图片中的图形验证码。";
+  }
 }
 
 function setIntegralBadge(element, text, state) {
