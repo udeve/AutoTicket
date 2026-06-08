@@ -11,6 +11,7 @@ describe("sensitive data redaction", () => {
       phone: "13800001234",
       cert_no: "110101199001011234",
       ses_id: "abcdef123456",
+      sendKey: "SCT1234567890",
       webhook: "https://oapi.dingtalk.com/robot/send?access_token=token",
       nested: {
         msg: "手机号 13800001234 身份证 110101199001011234"
@@ -20,6 +21,7 @@ describe("sensitive data redaction", () => {
     expect(redacted.phone).toBe("138****1234");
     expect(redacted.cert_no).toBe("110***********1234");
     expect(redacted.ses_id).toBe("ab****56");
+    expect(redacted.sendKey).toContain("****");
     expect(redacted.webhook).toContain("****");
     expect(redacted.nested.msg).toContain("138****1234");
     expect(redacted.nested.msg).toContain("110***********1234");

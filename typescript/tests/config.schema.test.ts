@@ -23,7 +23,10 @@ describe("config schema", () => {
     expect(config.schedule.exchange.intervalMs).toBe(100);
     expect(config.schedule.exchange.maxAttempts).toBe(50);
     expect(config.schedule.exchange.requestTimeoutMs).toBe(5000);
-    expect(config.dingtalk.enabled).toBe(false);
+    expect(config.notifications.dingtalk.enabled).toBe(false);
+    expect(config.notifications.serverChan.enabled).toBe(false);
+    expect(config.notifications.serverChan.uid).toBe("");
+    expect(config.notifications.serverChan.sendKey).toBe("");
   });
 
   it("finds configured users", () => {

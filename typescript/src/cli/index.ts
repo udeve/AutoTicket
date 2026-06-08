@@ -5,7 +5,7 @@ import { AuthService } from "../core/services/auth.service.js";
 import { ExchangeService } from "../core/services/exchange.service.js";
 import { formatDailyWorkflowSummary, summarizeDailyWorkflow, TaskService } from "../core/services/task.service.js";
 import { ExchangeScheduler, formatExchangeRunSummary, summarizeExchangeRun } from "../core/scheduler/exchange-scheduler.js";
-import { DingTalkNotifier } from "../core/notifier/dingtalk.notifier.js";
+import { createNotifier } from "../core/notifier/app.notifier.js";
 import { ConfigRepository, DEFAULT_CONFIG_PATH } from "../core/config/config.repository.js";
 import type { LoginResponse } from "../core/services/auth.service.js";
 import { startWebServer } from "../web/server.js";
@@ -89,7 +89,7 @@ program
     const client = new ApiClient({ timeoutMs: requestTimeoutMs });
     const exchangeService = new ExchangeService(client);
     const scheduler = new ExchangeScheduler(exchangeService);
-    const notifier = new DingTalkNotifier(config.dingtalk);
+    const notifier = createNotifier(config);
     const stateRepo = new TaskStateRepository(statePathForConfig(options.config));
     const startedAt = new Date().toISOString();
     const existingRun = await stateRepo.hasRunToday(options.user, "exchange");
@@ -158,7 +158,7 @@ program
     const user = await repo.getUser(options.user);
     const client = new ApiClient();
     const taskService = new TaskService(client);
-    const notifier = new DingTalkNotifier(config.dingtalk);
+    const notifier = createNotifier(config);
     const stateRepo = new TaskStateRepository(statePathForConfig(options.config));
     const startedAt = new Date().toISOString();
     const existingRun = await stateRepo.hasRunToday(options.user, "daily");

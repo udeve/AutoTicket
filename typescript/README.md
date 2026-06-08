@@ -90,7 +90,9 @@ config/autoticket.state.json
 
 首次运行需要配置的命令时，程序会自动生成配置文件。短信登录、密码登录、LOGIN_NAME + SES_ID 直接登录成功后，会自动保存或更新用户会话。
 
-配置模板见 [config/autoticket.example.json](config/autoticket.example.json)。真实账号、`sesId`、钉钉 Webhook 和 Secret 不要提交。
+配置模板见 [config/autoticket.example.json](config/autoticket.example.json)。真实账号、`sesId`、钉钉 Webhook / Secret、Server酱 SendKey 不要提交。
+
+消息通知统一配置在 `notifications` 下。
 
 ## 常用命令
 
@@ -119,7 +121,7 @@ autoticket state
 | TUI | `autoticket ui` | 日常交互配置、登录、定时任务管理 |
 | WebUI | `autoticket web` | 本地浏览器查看用户、状态和手动执行任务 |
 
-TUI 当前功能最完整，包含钉钉通知测试、PM2 后台管理和定时任务设置。WebUI 侧重本地浏览器里的登录、状态查看、每日任务和兑换执行。
+TUI 当前功能最完整，包含统一消息通知配置与测试、PM2 后台管理和定时任务设置。WebUI 侧重本地浏览器里的登录、状态查看、每日任务和兑换执行。
 
 ## 定时任务
 
@@ -178,7 +180,7 @@ autoticket schedule daily-plan --date 2026-06-05
 
 ## 敏感信息脱敏
 
-程序会在状态落盘和界面输出前自动脱敏手机号、身份证号、银行卡号、`LOGIN_NAME`、`SES_ID`、密码、Token、钉钉 Webhook 和 Secret 等敏感信息。
+程序会在状态落盘和界面输出前自动脱敏手机号、身份证号、银行卡号、`LOGIN_NAME`、`SES_ID`、密码、Token、钉钉 Webhook / Secret、Server酱 SendKey 等敏感信息。
 
 `config/autoticket.state.json` 只用于记录任务执行状态，读取旧状态文件时也会自动回写脱敏后的内容。`config/autoticket.json` 是真实登录配置，仍需要保存可用的 `loginName` 和 `sesId` 才能执行任务，请不要提交或公开该文件。
 

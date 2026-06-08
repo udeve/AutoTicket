@@ -66,7 +66,7 @@ CLI 只负责参数解析、配置加载、服务编排和结果输出，不直�
 
 - `users`：多用户配置。
 - `exchange`：兑换参数配置。
-- `dingtalk`：钉钉通知配置。
+- `notifications`：消息通知配置，包含 `dingtalk`、`serverChan` 等通道。
 
 配置模板：[config/autoticket.example.json](../config/autoticket.example.json)
 
@@ -82,7 +82,8 @@ CLI 只负责参数解析、配置加载、服务编排和结果输出，不直�
 - `exchange.maxAttempts`: `50`
 - `exchange.requestTimeoutMs`: `5000`
 - `exchange.stopRules`: 命中消息后的停止规则，例如 `{ "match": "手慢啦", "status": "failure" }`
-- `dingtalk.enabled`: `false`
+- `notifications.dingtalk.enabled`: `false`
+- `notifications.serverChan.enabled`: `false`
 
 ### 3.3 加解密层
 
@@ -105,7 +106,7 @@ CLI 只负责参数解析、配置加载、服务编排和结果输出，不直�
 
 文件：[src/core/utils/redaction.ts](../src/core/utils/redaction.ts)
 
-脱敏工具在状态落盘和界面输出前统一处理敏感字段和值，包括手机号、身份证号、银行卡号、`LOGIN_NAME`、`SES_ID`、密码、Token、钉钉 Webhook 和 Secret。`TaskStateRepository` 在 `save()` 前会脱敏状态内容，读取旧状态文件时也会自动回写脱敏版本，避免 `config/autoticket.state.json` 长期保留历史明文响应。
+脱敏工具在状态落盘和界面输出前统一处理敏感字段和值，包括手机号、身份证号、银行卡号、`LOGIN_NAME`、`SES_ID`、密码、Token、钉钉 Webhook / Secret、Server酱 SendKey。`TaskStateRepository` 在 `save()` 前会脱敏状态内容，读取旧状态文件时也会自动回写脱敏版本，避免 `config/autoticket.state.json` 长期保留历史明文响应。
 
 ### 3.5 HTTP 客户端层
 
@@ -161,14 +162,21 @@ HTTP 客户端使用 `undici`：
 
 - [src/core/notifier/notifier.ts](../src/core/notifier/notifier.ts)
 - [src/core/notifier/dingtalk.notifier.ts](../src/core/notifier/dingtalk.notifier.ts)
+- [src/core/notifier/serverchan.notifier.ts](../src/core/notifier/serverchan.notifier.ts)
+- [src/core/notifier/app.notifier.ts](../src/core/notifier/app.notifier.ts)
+- [src/core/notifier/providers.ts](../src/core/notifier/providers.ts)
 
 通知使用插件化设计：
 
 - `Notifier` 定义统一通知接口。
 - `NullNotifier` 可作为空实现。
+- `CompositeNotifier` 聚合多个通知通道。
+- `NotificationProvider` 定义通道名称、配置字段、校验逻辑和 Notifier 创建逻辑。
+- `notificationProviderList` 是通知通道注册表，`createNotifier()` 会遍历注册表创建聚合通知器。
 - `DingTalkNotifier` 实现钉钉机器人通知。
+- `ServerChanNotifier` 实现 Server酱³ 通知。
 
-通知不会参与核心请求逻辑；CLI、WebUI、TUI 都在任务结束后调用通知插件，因此通知失败不会影响兑换或每日任务本身。TUI 额外提供测试消息入口，用于验证 Webhook、Secret 和网络是否可用。
+通知不会参与核心请求逻辑；CLI、WebUI、TUI 都在任务结束后调用通知插件，因此通知失败不会影响兑换或每日任务本身。TUI 的消息通知设置页由 provider 注册表自动渲染，额外提供测试消息入口，用于验证钉钉 Webhook / Secret、Server酱 UID / SendKey 和网络是否可用。
 
 ## 4. 核心流程
 
@@ -189,7 +197,7 @@ CLI / WebUI / TUI exchange
               -> decryptData2()
       -> 判断 stopRules
   -> 输出结果
-  -> 钉钉通知
+  -> 消息通知
   -> client.close()
 ```
 
@@ -207,7 +215,7 @@ CLI / WebUI / TUI daily
       -> comment(related_id="1232", content=schedule.daily.commentContent)
       -> queryIntegral()
   -> 输出结果
-  -> 钉钉通知
+  -> 消息通知
 ```
 
 每日任务步骤之间不是并发执行。登录签到后、每次签到后都会随机等待一段时间再进入下一项；默认下限 `delayMs=1000`，上限自动为 `delayMs + 1000`，即默认 `1000~2000ms`。
@@ -249,9 +257,9 @@ CLI web
 CLI ui / tui
   -> 加载或创建 config/autoticket.json
   -> 渲染 Ink 交互菜单
-  -> 用户通过方向键选择登录、用户、每日任务、兑换、参数设置、钉钉通知或 WebUI
+  -> 用户通过方向键选择登录、用户、每日任务、兑换、参数设置、通知或 WebUI
   -> 参数和通知设置直接保存到配置文件
-  -> 每日任务 / 兑换任务完成后按 dingtalk.enabled 决定是否通知
+  -> 每日任务 / 兑换任务完成后按通知通道启用状态决定是否通知
 ```
 
 TUI 导航只记忆返回目标：从上级进入下级时会记住上级选中项，返回上级时恢复；重新进入子菜单时使用默认选中项。例如用户管理默认选中当前用户，兑换面额默认选中当前配置面额。
@@ -285,8 +293,8 @@ PM2 管理由 [src/core/schedule/pm2-manager.ts](../src/core/schedule/pm2-manage
 - 请求、解密、总耗时均保留在返回结果中，便于后续性能分析。
 - 兑换调度器支持并发、间隔和停止规则，避免无限无边界循环。
 - 定时任务输出流水日志，包含下一次执行、每日任务步骤、兑换尝试和任务完成摘要。
-- 钉钉通知在任务结束后执行，不阻塞单次请求路径。
-- TUI 支持钉钉 Webhook / Secret 配置、启用校验和测试消息发送。
+- 钉钉 / Server酱通知在任务结束后执行，不阻塞单次请求路径。
+- TUI 支持按通知 provider 自动渲染配置表单、启用校验和测试消息发送。
 - 登录成功自动保存配置，减少手工复制 `login_name` / `ses_id` 的操作风险。
 
 ## 6. 测试与验证
@@ -324,6 +332,6 @@ pnpm build
 
 - 增加真实接口的可选集成测试。
 - 增加任务日志文件输出。
-- 增加更多通知插件。
+- 增加更多通知插件：新增 provider 文件并注册到 `notificationProviderList` 即可复用 CLI/TUI/WebUI/定时任务的统一通知链路。
 - 增加本地 Web 管理面板。
 - 对兑换调度增加更细的性能统计报表。

@@ -5,6 +5,7 @@ const SENSITIVE_KEY_PATTERNS = [
   /secret/i,
   /password/i,
   /passwd/i,
+  /send[_-]?key/i,
   /webhook/i,
   /cert_?no/i,
   /id_?no/i,
@@ -63,7 +64,7 @@ function isSensitiveKey(key: string): boolean {
 
 function maskByKey(key: string, value: string): string {
   if (!value) return value;
-  if (/secret|password|passwd|token|webhook|ses|session/i.test(key)) return maskSecret(value);
+  if (/secret|password|passwd|token|webhook|ses|session|send[_-]?key/i.test(key)) return maskSecret(value);
   if (/cert|id_?no|id_?card/i.test(key)) return maskIdCard(value);
   if (/mobile|phone|login_?name/i.test(key)) return maskContact(value);
   if (/card/i.test(key)) return maskLongNumber(value);

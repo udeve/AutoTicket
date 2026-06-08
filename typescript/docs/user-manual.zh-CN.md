@@ -2,7 +2,7 @@
 
 ## 1. 简介
 
-AutoTicket 当前推荐使用 **TypeScript + Node.js 高性能版本**。它提供命令行、交互式 TUI 和本地 WebUI，可执行登录辅助、每日任务、优惠券兑换和钉钉通知。
+AutoTicket 当前推荐使用 **TypeScript + Node.js 高性能版本**。它提供命令行、交互式 TUI 和本地 WebUI，可执行登录辅助、每日任务、优惠券兑换和消息通知。
 
 旧 Python 图形界面、旧 JavaScript 脚本和 uni-app 小程序仍保留在仓库根目录。新版本是 `typescript/` 目录内的独立 TypeScript 项目，本文档中的命令默认都在 `typescript/` 目录中执行。
 
@@ -81,10 +81,18 @@ config/autoticket.json
       { "match": "手慢啦", "status": "failure" }
     ]
   },
-  "dingtalk": {
-    "enabled": false,
-    "webhook": "",
-    "secret": ""
+  "notifications": {
+    "dingtalk": {
+      "enabled": false,
+      "webhook": "",
+      "secret": ""
+    },
+    "serverChan": {
+      "enabled": false,
+      "uid": "",
+      "sendKey": "",
+      "tags": ""
+    }
   },
   "schedule": {
     "enabled": false,
@@ -152,7 +160,7 @@ WebUI 当前支持：
 - 执行每日任务。
 - 执行优惠券兑换。
 
-定时任务设置、PM2 后台管理和钉钉测试消息目前建议使用 TUI。
+定时任务设置、PM2 后台管理和通知测试消息目前建议使用 TUI。
 
 ## 6. 打开交互式 TUI
 
@@ -180,7 +188,7 @@ TUI 支持：
 - 查看全部账号今日每日任务和兑换任务执行状态。
 - 每日任务和优惠券兑换。
 - 兑换参数设置，兑换面额可直接选择 `2元`、`4元`、`6元`，开始时间可直接选择 `07:00`、`11:30`、`17:00`。
-- 钉钉通知设置，可填写 Webhook / Secret、启用通知、发送测试消息。
+- 消息通知设置，可分别配置钉钉 Webhook / Secret、Server酱³ UID / SendKey / Tags、启用通知、发送测试消息。
 - 定时任务设置，包括总开关、执行用户、每日任务时间、兑换场次、PM2 后台启动/重启/状态/日志/停止。
 - 查看明日每日任务随机执行时间。
 - 打开 WebUI。
@@ -374,29 +382,43 @@ autoticket exchange --user user1 --exchange-id 10 --start-at 07:00:00 --concurre
 
 兑换请求采用滚动并发模式：每隔 `intervalMs~intervalMaxMs` 之间的随机间隔尝试发起一个新请求，同时最多保留 `concurrency` 个请求在飞。某个请求超时不会阻塞后续请求继续按节拍发起。兑换响应命中 `stopRules` 后会停止当前账号当前轮次继续发新请求；只要本轮任意尝试命中过 `success` 规则，状态记录为 `SUCC`。如果只命中过 `failure` 规则，例如 `手慢啦`，则记录为 `FAIL`。
 
-## 12. 钉钉通知
+## 12. 消息通知
 
-推荐在 TUI 中打开 `钉钉通知设置`，直接配置启用状态、Webhook 和 Secret。填写完成后可以选择 `发送测试消息`，确认钉钉通知是否正常。程序会自动保存到 `config/autoticket.json`。
+当前支持钉钉机器人和 Server酱³。推荐在 TUI 中打开 `消息通知设置`，选择具体通知通道后直接配置启用状态和密钥信息。填写完成后可以选择 `发送测试消息`，确认通知是否正常。程序会自动保存到 `config/autoticket.json`。
 
 未填写 Webhook 或 Secret 时，TUI 不允许启用钉钉通知，并会提示先补全配置。如果通知已启用后清空 Webhook 或 Secret，程序会自动关闭通知。
+
+未填写 UID 或 SendKey 时，TUI 不允许启用 Server酱³通知，并会提示先补全配置。如果通知已启用后清空 UID 或 SendKey，程序会自动关闭通知。
 
 配置保存后的结构如下：
 
 ```json
 {
-  "dingtalk": {
-    "enabled": true,
-    "webhook": "https://oapi.dingtalk.com/robot/send?access_token=你的token",
-    "secret": "你的加签密钥"
+  "notifications": {
+    "dingtalk": {
+      "enabled": true,
+      "webhook": "https://oapi.dingtalk.com/robot/send?access_token=你的token",
+      "secret": "你的加签密钥"
+    },
+    "serverChan": {
+      "enabled": true,
+      "uid": "你的UID",
+      "sendKey": "你的SendKey",
+      "tags": "AutoTicket"
+    }
   }
 }
 ```
+
+Server酱³发送地址由程序自动拼接为 `https://<uid>.push.ft07.com/send/<sendKey>.send`，用户只需要填写 UID 和 SendKey。`tags` 可选，用于 Server酱³侧的消息标签。
 
 当前通知触发时机：
 
 - CLI、WebUI、TUI 执行每日任务结束后发送结果。
 - CLI、WebUI、TUI 执行兑换任务结束后发送摘要。
 - TUI 中选择 `发送测试消息` 时立即发送一条测试通知。
+
+如果同时启用了钉钉和 Server酱³，程序会同时发送到两个通道。
 
 每日任务和兑换任务通知都会带上本次执行任务的用户 ID，方便多账号场景下区分是哪一个账号触发的结果。
 
@@ -546,10 +568,10 @@ pnpm build
 
 ## 15. 安全提醒
 
-- 程序会在任务状态落盘、CLI/TUI/WebUI 输出和后台日志输出前自动脱敏手机号、身份证号、银行卡号、`LOGIN_NAME`、`SES_ID`、密码、Token、钉钉 Webhook 和 Secret 等敏感信息。
+- 程序会在任务状态落盘、CLI/TUI/WebUI 输出和后台日志输出前自动脱敏手机号、身份证号、银行卡号、`LOGIN_NAME`、`SES_ID`、密码、Token、钉钉 Webhook / Secret、Server酱 SendKey 等敏感信息。
 - `config/autoticket.state.json` 如果已经存在旧的明文敏感数据，下一次读取状态文件时会自动回写为脱敏后的内容。
 - `config/autoticket.json` 是真实登录配置文件，为了能正常执行任务，仍会保存可用的 `loginName` 和 `sesId`。
 - 不要提交真实的 `config/autoticket.json`。
-- 不要公开手机号、`ses_id`、钉钉 webhook 和 secret。
+- 不要公开手机号、`ses_id`、钉钉 webhook / secret、Server酱 SendKey。
 - WebUI 默认监听 `127.0.0.1`，建议只在本机使用。
 - 本项目仅用于学习和研究，请遵守相关服务条款和法律法规。

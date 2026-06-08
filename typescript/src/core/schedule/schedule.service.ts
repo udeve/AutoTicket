@@ -1,7 +1,8 @@
 import { randomInt } from "node:crypto";
 import type { AppConfig, UserConfig } from "../config/config.schema.js";
 import { ApiClient } from "../http/api-client.js";
-import { DingTalkNotifier } from "../notifier/dingtalk.notifier.js";
+import { createNotifier } from "../notifier/app.notifier.js";
+import type { Notifier } from "../notifier/notifier.js";
 import { ExchangeScheduler, formatExchangeRunSummary, summarizeExchangeRun } from "../scheduler/exchange-scheduler.js";
 import { ExchangeService } from "../services/exchange.service.js";
 import { formatDailyWorkflowSummary, summarizeDailyWorkflow, TaskService, type DailyWorkflowStepResult } from "../services/task.service.js";
@@ -28,11 +29,11 @@ type ScheduleCandidate =
   | { task: "exchange"; time: Date; timeText: string };
 
 export class ScheduleService {
-  private readonly notifier: DingTalkNotifier;
+  private readonly notifier: Notifier;
   private readonly logger: (message: string) => void;
 
   constructor(private readonly options: ScheduleServiceOptions) {
-    this.notifier = new DingTalkNotifier(options.config.dingtalk);
+    this.notifier = createNotifier(options.config);
     const logger = options.logger ?? (() => undefined);
     this.logger = (message) => logger(redactText(message));
   }

@@ -7,7 +7,7 @@ import { ConfigRepository } from "../core/config/config.repository.js";
 import { formatDailyWorkflowSummary, summarizeDailyWorkflow, TaskService } from "../core/services/task.service.js";
 import { ExchangeService } from "../core/services/exchange.service.js";
 import { ExchangeScheduler, formatExchangeRunSummary, summarizeExchangeRun } from "../core/scheduler/exchange-scheduler.js";
-import { DingTalkNotifier } from "../core/notifier/dingtalk.notifier.js";
+import { createNotifier } from "../core/notifier/app.notifier.js";
 import { formatTaskStatusSummary, statePathForConfig, summarizeTaskRuns, TaskStateRepository, todayKey } from "../core/state/task-state.repository.js";
 import { redactSensitive, redactText, redactUserForDisplay } from "../core/utils/redaction.js";
 
@@ -156,7 +156,7 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
           message: summary.message,
           summary: { ...summary, raw: result }
         });
-        await new DingTalkNotifier(config.dingtalk).notify(`AutoTicket 每日任务完成\n用户: ${user.id}\n${formatDailyWorkflowSummary(summary)}`);
+        await createNotifier(config).notify(`AutoTicket 每日任务完成\n用户: ${user.id}\n${formatDailyWorkflowSummary(summary)}`);
         return { summary, data: redactSensitive(result) };
       } catch (error) {
         await stateRepo.append({
@@ -214,7 +214,7 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
           meta: exchangeMeta,
           summary: { ...summary, raw: result }
         });
-        await new DingTalkNotifier(config.dingtalk).notify(`AutoTicket 兑换结束\n用户: ${user.id}\n${formatExchangeRunSummary(summary)}`);
+        await createNotifier(config).notify(`AutoTicket 兑换结束\n用户: ${user.id}\n${formatExchangeRunSummary(summary)}`);
         return { summary, text: formatExchangeRunSummary(summary), data: redactSensitive(result) };
       } catch (error) {
         await stateRepo.append({

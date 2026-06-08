@@ -10,7 +10,8 @@ import { formatDailyWorkflowSummary, summarizeDailyWorkflow, TaskService, type D
 import { ExchangeService } from "../core/services/exchange.service.js";
 import { ExchangeScheduler, formatExchangeRunSummary, summarizeExchangeRun, type ExchangeSchedulerRunResult } from "../core/scheduler/exchange-scheduler.js";
 import { EXCHANGE_AMOUNT_OPTIONS, EXCHANGE_START_TIME_OPTIONS, formatExchangeAmount, formatExchangeStartTime, normalizeTimeToSecond } from "../core/exchange/options.js";
-import { DingTalkNotifier } from "../core/notifier/dingtalk.notifier.js";
+import { createNotifier } from "../core/notifier/app.notifier.js";
+import { getNotificationProvider, notificationProviderList, type NotificationProviderId } from "../core/notifier/providers.js";
 import { formatRunState, formatTaskExecutionLog, formatTaskStatusSummary, statePathForConfig, summarizeTaskRuns, TaskStateRepository, todayKey } from "../core/state/task-state.repository.js";
 import { formatDailySchedulePlan, ScheduleService, tomorrowKey, withScheduleLogTimestamp } from "../core/schedule/schedule.service.js";
 import { logsPm2Schedule, PM2_APP_NAME, restartPm2Schedule, startPm2Schedule, statusPm2Schedule, stopPm2Schedule } from "../core/schedule/pm2-manager.js";
@@ -21,8 +22,8 @@ import { InfoRow } from "./components/InfoRow.js";
 import { Menu } from "./components/Menu.js";
 import { TextPrompt } from "./components/TextPrompt.js";
 
-type Screen = "home" | "login" | "direct" | "sms" | "password" | "users" | "status" | "state" | "daily" | "exchange" | "confirmDaily" | "confirmExchange" | "settings" | "amount" | "startTime" | "schedule" | "scheduleUsers" | "scheduleDaily" | "scheduleDailyTime" | "scheduleDailyRangeStart" | "scheduleDailyRangeEnd" | "scheduleExchange" | "scheduleExchangeTimes" | "dingtalk" | "web" | "summary" | "message";
-type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeConcurrency" | "scheduleExchangeIntervalMs" | "scheduleExchangeIntervalMaxMs" | "scheduleExchangeMaxAttempts" | "scheduleExchangeRequestTimeoutMs" | "dingtalkWebhook" | "dingtalkSecret";
+type Screen = "home" | "login" | "direct" | "sms" | "password" | "users" | "status" | "state" | "daily" | "exchange" | "confirmDaily" | "confirmExchange" | "settings" | "amount" | "startTime" | "schedule" | "scheduleUsers" | "scheduleDaily" | "scheduleDailyTime" | "scheduleDailyRangeStart" | "scheduleDailyRangeEnd" | "scheduleExchange" | "scheduleExchangeTimes" | "notifications" | "notificationProvider" | "web" | "summary" | "message";
+type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeConcurrency" | "scheduleExchangeIntervalMs" | "scheduleExchangeIntervalMaxMs" | "scheduleExchangeMaxAttempts" | "scheduleExchangeRequestTimeoutMs" | `notification:${NotificationProviderId}:${string}`;
 type LoginScreen = "direct" | "sms" | "password";
 const parentScreen: Partial<Record<Screen, Screen>> = {
   login: "home",
@@ -47,7 +48,8 @@ const parentScreen: Partial<Record<Screen, Screen>> = {
   scheduleDailyRangeEnd: "scheduleDaily",
   scheduleExchange: "schedule",
   scheduleExchangeTimes: "scheduleExchange",
-  dingtalk: "home",
+  notifications: "home",
+  notificationProvider: "notifications",
   web: "home",
   summary: "home",
   message: "home"
@@ -69,6 +71,7 @@ function App() {
   const [activeIndexes, setActiveIndexes] = useState<Partial<Record<Screen, number>>>({});
   const [restoreIndexes, setRestoreIndexes] = useState<Partial<Record<Screen, number>>>({});
   const [currentIntegral, setCurrentIntegral] = useState<string>("未查询");
+  const [selectedNotificationProviderId, setSelectedNotificationProviderId] = useState<NotificationProviderId>("dingtalk");
 
   useEffect(() => {
     void reloadConfig();
@@ -213,25 +216,50 @@ function App() {
     if (key === "exchangeId") navigateBack();
   }
 
-  async function updateDingTalkConfig(key: "enabled" | "webhook" | "secret", value: boolean | string) {
+  async function updateNotificationConfig(providerId: NotificationProviderId, key: string, value: boolean | string) {
     if (!config) return;
-    if (key === "enabled" && value === true && (!config.dingtalk.webhook || !config.dingtalk.secret)) {
-      setMessage("请先填写钉钉 Webhook 和 Secret，再启用通知。");
-      setScreen("message");
-      return;
+    const provider = getNotificationProvider(providerId);
+    if (!provider) return;
+    const providerConfig = config.notifications[providerId];
+    if (key === "enabled" && value === true) {
+      const validationMessage = provider.validate(providerConfig);
+      if (validationMessage) {
+        setMessage(validationMessage);
+        setScreen("message");
+        return;
+      }
     }
     const nextConfig = {
       ...config,
-      dingtalk: {
-        ...config.dingtalk,
-        [key]: value
+      notifications: {
+        ...config.notifications,
+        [providerId]: {
+          ...providerConfig,
+          [key]: value
+        }
       }
     };
-    if ((key === "webhook" || key === "secret") && value === "") {
-      nextConfig.dingtalk.enabled = false;
+    if (key !== "enabled") {
+      nextConfig.notifications[providerId].enabled = false;
     }
     await repo.save(nextConfig);
     setConfig(nextConfig);
+  }
+
+  function openNotificationProvider(providerId: NotificationProviderId) {
+    setSelectedNotificationProviderId(providerId);
+    navigate("notificationProvider");
+  }
+
+  function openNotificationPrompt(providerId: NotificationProviderId, fieldKey: string, label: string, secret?: boolean, initialValue?: string) {
+    openPrompt({ key: `notification:${providerId}:${fieldKey}`, label, mask: secret ? "*" : undefined, initialValue });
+  }
+
+  function parseNotificationPromptKey(key: FieldKey): { providerId: NotificationProviderId; fieldKey: string } | undefined {
+    if (!key.startsWith("notification:")) return undefined;
+    const [, providerId, fieldKey] = key.split(":");
+    if (!getNotificationProvider(providerId) || !fieldKey) return undefined;
+    return { providerId: providerId as NotificationProviderId, fieldKey };
   }
 
   async function saveConfig(nextConfig: AppConfig) {
@@ -393,21 +421,25 @@ function App() {
     await runTask(label, task);
   }
 
-  async function testDingTalk() {
+  async function testNotification(providerId: NotificationProviderId) {
     if (!config) return;
-    if (!config.dingtalk.webhook || !config.dingtalk.secret) {
-      setMessage("请先填写钉钉 Webhook 和 Secret，再发送测试消息。");
+    const provider = getNotificationProvider(providerId);
+    if (!provider) return;
+    const providerConfig = config.notifications[providerId];
+    const validationMessage = provider.validate(providerConfig);
+    if (validationMessage) {
+      setMessage(validationMessage.replace("再启用通知", "再发送测试消息"));
       setScreen("message");
       return;
     }
     setBusy(true);
-    setMessage("钉钉测试消息发送中...");
+    setMessage(`${provider.name}测试消息发送中...`);
     setScreen("message");
     try {
-      const ok = await new DingTalkNotifier({ ...config.dingtalk, enabled: true }).notify(`AutoTicket 钉钉通知测试\n时间: ${new Date().toLocaleString()}`);
-      setMessage(ok ? "钉钉测试消息发送成功。" : "钉钉测试消息发送失败，请检查 Webhook、Secret 或网络。");
+      const ok = await provider.create({ ...providerConfig, enabled: true }).notify(`AutoTicket ${provider.name}通知测试\n时间: ${new Date().toLocaleString()}`);
+      setMessage(ok ? `${provider.name}测试消息发送成功。` : `${provider.name}测试消息发送失败，请检查配置或网络。`);
     } catch (error) {
-      setMessage(`钉钉测试消息发送失败\n${error instanceof Error ? error.message : String(error)}`);
+      setMessage(`${provider.name}测试消息发送失败\n${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setBusy(false);
     }
@@ -501,7 +533,9 @@ function App() {
           initialValue={prompt.initialValue}
           onCancel={() => setPrompt(undefined)}
           onSubmit={(value) => {
-            if (value.trim() === "") {
+            const notificationPrompt = parseNotificationPromptKey(prompt.key);
+            const notificationField = notificationPrompt ? getNotificationProvider(notificationPrompt.providerId)?.fields.find((field) => field.key === notificationPrompt.fieldKey) : undefined;
+            if (value.trim() === "" && notificationField?.key !== "tags") {
               setMessage(`${prompt.label}不能为空。`);
               setPrompt(undefined);
               setScreen("message");
@@ -512,10 +546,8 @@ function App() {
             } else {
               if (["concurrency", "intervalMs", "intervalMaxMs", "maxAttempts", "requestTimeoutMs"].includes(prompt.key)) {
                 void updateExchangeConfig(prompt.key as "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs", value);
-              } else if (prompt.key === "dingtalkWebhook") {
-                void updateDingTalkConfig("webhook", value);
-              } else if (prompt.key === "dingtalkSecret") {
-                void updateDingTalkConfig("secret", value);
+              } else if (notificationPrompt) {
+                void updateNotificationConfig(notificationPrompt.providerId, notificationPrompt.fieldKey, value);
               } else if (prompt.key === "scheduleDailyTime") {
                 void updateScheduleDailyValue("time", value);
               } else if (prompt.key === "scheduleDailyDelayMs") {
@@ -569,7 +601,8 @@ function App() {
       {screen === "scheduleDailyRangeEnd" && <ScheduleHourSelect initialIndex={initialIndex("scheduleDailyRangeEnd", config.schedule.daily.rangeEndHour)} onHighlight={(index) => setActiveIndex("scheduleDailyRangeEnd", index)} title="结束小时" currentHour={config.schedule.daily.rangeEndHour} updateHour={(value) => void updateScheduleDailyHour("rangeEndHour", value)} navigateBack={navigateBack} />}
       {screen === "scheduleExchange" && <ScheduleExchangeSettings initialIndex={initialIndex("scheduleExchange")} onHighlight={(index) => setActiveIndex("scheduleExchange", index)} config={config} setPrompt={openPrompt} navigate={navigate} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} navigateBack={navigateBack} />}
       {screen === "scheduleExchangeTimes" && <ScheduleExchangeTimes initialIndex={initialIndex("scheduleExchangeTimes")} onHighlight={(index) => setActiveIndex("scheduleExchangeTimes", index)} config={config} toggleTime={toggleScheduleExchangeTime} navigateBack={navigateBack} />}
-      {screen === "dingtalk" && <DingTalkSettings initialIndex={initialIndex("dingtalk")} onHighlight={(index) => setActiveIndex("dingtalk", index)} config={config} setPrompt={openPrompt} updateDingTalkConfig={updateDingTalkConfig} testDingTalk={() => void testDingTalk()} navigateBack={navigateBack} />}
+      {screen === "notifications" && <NotificationList initialIndex={initialIndex("notifications")} onHighlight={(index) => setActiveIndex("notifications", index)} config={config} openProvider={openNotificationProvider} navigateBack={navigateBack} />}
+      {screen === "notificationProvider" && <NotificationSettings initialIndex={initialIndex("notificationProvider")} onHighlight={(index) => setActiveIndex("notificationProvider", index)} config={config} providerId={selectedNotificationProviderId} setPrompt={openNotificationPrompt} updateNotificationConfig={(key, value) => void updateNotificationConfig(selectedNotificationProviderId, key, value)} testNotification={() => void testNotification(selectedNotificationProviderId)} navigateBack={navigateBack} />}
       {screen === "web" && <WebUi initialIndex={initialIndex("web")} onHighlight={(index) => setActiveIndex("web", index)} runTask={runTask} navigateBack={navigateBack} />}
       {screen === "summary" && <Summary config={config} />}
       {screen === "message" && <Box flexDirection="column" marginTop={1}>{busy ? <Text color="cyan"><Spinner type="dots" /> {message}</Text> : <><Text>{message}</Text><Text color="gray">Enter 返回主菜单 / Esc 返回</Text></>}</Box>}
@@ -585,7 +618,7 @@ function Header({ config, currentUser, currentIntegral }: { config: AppConfig; c
       <InfoRow label="当前积分" value={currentIntegral} color={currentIntegral === "查询失败" ? "yellow" : "cyan"} />
       <InfoRow label="兑换配置" value={`面额=${formatExchangeAmount(config.exchange.exchangeId)} 时间=${formatExchangeStartTime(config.exchange.startAt)} 并发=${config.exchange.concurrency} 间隔=${formatIntervalRange(config.exchange.intervalMs, config.exchange.intervalMaxMs)} 最大=${config.exchange.maxAttempts}`} />
       <InfoRow label="定时任务" value={formatScheduleHeader(config)} color={config.schedule.enabled ? "green" : "gray"} />
-      <InfoRow label="钉钉通知" value={config.dingtalk.enabled ? "已启用" : "未启用"} color={config.dingtalk.enabled ? "green" : "gray"} />
+      <InfoRow label="消息通知" value={formatNotificationHeader(config)} color={hasEnabledNotification(config) ? "green" : "gray"} />
     </Box>
   );
 }
@@ -608,7 +641,7 @@ function Home({ initialIndex, onHighlight, navigate, openTaskRun, exit }: MenuNa
     { label: "  查看任务状态", value: "state" },
     { label: "  兑换参数设置", value: "settings" },
     { label: "  定时任务设置", value: "schedule" },
-    { label: "  钉钉通知设置", value: "dingtalk" },
+    { label: "  消息通知设置", value: "notifications" },
     { label: "  打开 WebUI", value: "web" },
     { label: "  查看配置摘要", value: "summary" },
     { label: "退出", value: "exit" }
@@ -709,7 +742,7 @@ function Daily({ initialIndex, onHighlight, currentUser, config, runTask, update
       }));
       const summary = summarizeDailyWorkflow(result);
       await stateRepo.append({ task: "daily", userId: currentUser.id, status: summary.success ? "success" : "failure", startedAt, finishedAt: new Date().toISOString(), message: summary.message, summary: { ...summary, raw: result } });
-      await new DingTalkNotifier(config.dingtalk).notify(`AutoTicket 每日任务完成\n用户: ${currentUser.id}\n${formatDailyWorkflowSummary(summary)}`);
+      await createNotifier(config).notify(`AutoTicket 每日任务完成\n用户: ${currentUser.id}\n${formatDailyWorkflowSummary(summary)}`);
       return formatDailyWorkflowSummary(summary);
     } catch (error) {
       await stateRepo.append({ task: "daily", userId: currentUser.id, status: "failure", startedAt, finishedAt: new Date().toISOString(), message: error instanceof Error ? error.message : String(error) });
@@ -727,7 +760,7 @@ function Exchange({ initialIndex, onHighlight, currentUser, config, runTask, nav
       const result = await new ExchangeScheduler(new ExchangeService(client)).run({ user: currentUser, ...exchangeMeta, stopRules: config.exchange.stopRules });
       const summary = summarizeExchangeRun(result);
       await stateRepo.append({ task: "exchange", userId: currentUser.id, status: summary.success ? "success" : "failure", startedAt, finishedAt: new Date().toISOString(), message: result.final?.msg ?? "未命中停止条件", meta: exchangeMeta, summary: { ...summary, raw: result } });
-      await new DingTalkNotifier(config.dingtalk).notify(`AutoTicket 兑换结束\n用户: ${currentUser.id}\n${formatExchangeRunSummary(summary)}`);
+      await createNotifier(config).notify(`AutoTicket 兑换结束\n用户: ${currentUser.id}\n${formatExchangeRunSummary(summary)}`);
       return formatExchangeRunSummary(summary);
     } catch (error) {
       await stateRepo.append({ task: "exchange", userId: currentUser.id, status: "failure", startedAt, finishedAt: new Date().toISOString(), message: error instanceof Error ? error.message : String(error) });
@@ -919,37 +952,66 @@ function formatScheduleHeader(config: AppConfig): string {
   return parts.length ? parts.join(" ") : "已启用 / 无任务";
 }
 
-function DingTalkSettings({
+function hasEnabledNotification(config: AppConfig): boolean {
+  return notificationProviderList.some((provider) => config.notifications[provider.id].enabled);
+}
+
+function formatNotificationHeader(config: AppConfig): string {
+  const enabled = notificationProviderList.filter((provider) => config.notifications[provider.id].enabled).map((provider) => provider.name);
+  return enabled.length ? enabled.join(" / ") : "未启用";
+}
+
+function formatNotificationFieldValue(value: unknown, secret?: boolean): string {
+  if (value === undefined || value === null || value === "") return "未填写";
+  if (secret) return "已填写";
+  return redactText(String(value));
+}
+
+function NotificationList({ initialIndex, onHighlight, config, openProvider, navigateBack }: MenuNavProps & { config: AppConfig; openProvider: (providerId: NotificationProviderId) => void; navigateBack: () => void }) {
+  return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[
+    ...notificationProviderList.map((provider) => ({ label: `${provider.name}: ${config.notifications[provider.id].enabled ? "已启用" : "未启用"}`, value: provider.id })),
+    { label: "返回", value: "back" }
+  ]} onSelect={(item) => item.value === "back" ? navigateBack() : openProvider(item.value as NotificationProviderId)} />;
+}
+
+function NotificationSettings({
   initialIndex,
   onHighlight,
   config,
+  providerId,
   setPrompt,
-  updateDingTalkConfig,
-  testDingTalk,
+  updateNotificationConfig,
+  testNotification,
   navigateBack
-}: ScreenProps & MenuNavProps & {
+}: MenuNavProps & {
   config: AppConfig;
-  updateDingTalkConfig: (key: "enabled" | "webhook" | "secret", value: boolean | string) => void;
-  testDingTalk: () => void;
+  providerId: NotificationProviderId;
+  setPrompt: (providerId: NotificationProviderId, fieldKey: string, label: string, secret?: boolean, initialValue?: string) => void;
+  updateNotificationConfig: (key: string, value: boolean | string) => void;
+  testNotification: () => void;
+  navigateBack: () => void;
 }) {
-  const dingtalk = config.dingtalk;
+  const provider = getNotificationProvider(providerId);
+  if (!provider) return <Text color="red">未知通知通道</Text>;
+  const providerConfig = config.notifications[providerId] as Record<string, unknown> & { enabled: boolean };
   return (
     <Menu
       initialIndex={initialIndex}
       onHighlight={onHighlight}
       items={[
-        { label: `通知状态: ${dingtalk.enabled ? "已启用" : "未启用"}`, value: "toggle" },
-        { label: `Webhook: ${dingtalk.webhook ? "已填写" : "未填写"}`, value: "webhook" },
-        { label: `Secret: ${dingtalk.secret ? "已填写" : "未填写"}`, value: "secret" },
+        { label: `通知状态: ${providerConfig.enabled ? "已启用" : "未启用"}`, value: "toggle" },
+        ...provider.fields.map((field) => ({ label: `${field.label}: ${formatNotificationFieldValue(providerConfig[field.key], field.secret)}`, value: field.key })),
         { label: "发送测试消息", value: "test" },
         { label: "返回", value: "back" }
       ]}
       onSelect={(item) => {
         if (item.value === "back") navigateBack();
-        else if (item.value === "toggle") updateDingTalkConfig("enabled", !dingtalk.enabled);
-        else if (item.value === "webhook") setPrompt({ key: "dingtalkWebhook", label: "钉钉 Webhook" });
-        else if (item.value === "secret") setPrompt({ key: "dingtalkSecret", label: "钉钉 Secret", mask: "*" });
-        else if (item.value === "test") testDingTalk();
+        else if (item.value === "toggle") updateNotificationConfig("enabled", !providerConfig.enabled);
+        else if (item.value === "test") testNotification();
+        else {
+          const field = provider.fields.find((candidate) => candidate.key === item.value);
+          if (field) setPrompt(providerId, field.key, `${provider.name} ${field.label}`, field.secret, String(providerConfig[field.key] ?? ""));
+        }
       }}
     />
   );

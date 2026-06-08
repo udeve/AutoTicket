@@ -27,6 +27,27 @@ export const DingTalkConfigSchema = z.object({
   secret: z.string().default("")
 });
 
+export const ServerChanConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  uid: z.string().default(""),
+  sendKey: z.string().default(""),
+  tags: z.string().default("")
+});
+
+export const NotificationsConfigSchema = z.object({
+  dingtalk: DingTalkConfigSchema.default({
+    enabled: false,
+    webhook: "",
+    secret: ""
+  }),
+  serverChan: ServerChanConfigSchema.default({
+    enabled: false,
+    uid: "",
+    sendKey: "",
+    tags: ""
+  })
+});
+
 export const ScheduleConfigSchema = z.object({
   enabled: z.boolean().default(false),
   users: z.array(z.string()).default([]),
@@ -100,10 +121,18 @@ export const AppConfigSchema = z.object({
       requestTimeoutMs: 5000,
       stopRules: [...DEFAULT_EXCHANGE_STOP_RULES]
     }),
-  dingtalk: DingTalkConfigSchema.default({
-    enabled: false,
-    webhook: "",
-    secret: ""
+  notifications: NotificationsConfigSchema.default({
+    dingtalk: {
+      enabled: false,
+      webhook: "",
+      secret: ""
+    },
+    serverChan: {
+      enabled: false,
+      uid: "",
+      sendKey: "",
+      tags: ""
+    }
   }),
   schedule: ScheduleConfigSchema.default({
     enabled: false,

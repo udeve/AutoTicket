@@ -39,10 +39,18 @@
       }
     ]
   },
-  "dingtalk": {
-    "enabled": false,
-    "webhook": "",
-    "secret": ""
+  "notifications": {
+    "dingtalk": {
+      "enabled": false,
+      "webhook": "",
+      "secret": ""
+    },
+    "serverChan": {
+      "enabled": false,
+      "uid": "",
+      "sendKey": "",
+      "tags": ""
+    }
   },
   "schedule": {
     "enabled": false,
