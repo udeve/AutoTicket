@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatDailySchedulePlan, randomShardIndexes, randomTimeTextInRange, randomTimeTextInShard, formatScheduleLogTimestamp, nextDailyOccurrence, nextOccurrence, ScheduleService, tomorrowKey, withScheduleLogTimestamp } from "../src/core/schedule/schedule.service.js";
 import { createDefaultConfig } from "../src/core/config/config.repository.js";
 import { TaskStateRepository, type TaskState } from "../src/core/state/task-state.repository.js";
+import type { UserConfig } from "../src/core/config/config.schema.js";
 
 describe("schedule service", () => {
   it("calculates next occurrence today", () => {
@@ -70,6 +71,8 @@ describe("schedule service", () => {
       { id: "u1", loginName: "u1", sesId: "s1" },
       { id: "u2", loginName: "u2", sesId: "s2" }
     ];
+    config.schedule.enabled = true;
+    config.schedule.daily.enabled = true;
     config.schedule.daily.mode = "range";
     config.schedule.daily.rangeStartHour = 6;
     config.schedule.daily.rangeEndHour = 7;
@@ -87,6 +90,74 @@ describe("schedule service", () => {
     expect(minutes[0]).toBeLessThan(30);
     expect(minutes[1]).toBeGreaterThanOrEqual(30);
     expect(minutes[1]).toBeLessThan(60);
+  });
+
+  it("keeps the background loop alive when one scheduled daily user fails", async () => {
+    const config = createDefaultConfig();
+    config.users = [
+      { id: "u1", loginName: "u1", sesId: "s1" },
+      { id: "u2", loginName: "u2", sesId: "s2" }
+    ];
+    config.schedule.enabled = true;
+    config.schedule.daily.enabled = true;
+    const stateRepo = new TaskStateRepository();
+    stateRepo.latestFor = async () => undefined;
+    const logs: string[] = [];
+    class TestScheduleService extends ScheduleService {
+      runCount = 0;
+      protected async nextDue() {
+        return dueItems.shift();
+      }
+      protected async runDailyForUser(user: UserConfig): Promise<void> {
+        this.runCount += 1;
+        if (user.id === "u1") throw new Error("network down");
+      }
+    }
+    const dueItems = [
+      { task: "daily" as const, time: new Date(Date.now() - 1), timeText: "06:00:00" },
+      undefined
+    ];
+    const service = new TestScheduleService({ config, stateRepo, logger: (message) => logs.push(message) });
+
+    await service.runForever();
+
+    expect(service.runCount).toBe(2);
+    expect(logs.some((line) => line.includes("u1 每日任务失败: network down"))).toBe(true);
+    expect(logs.at(-1)).toBe("没有启用的定时计划。");
+  });
+
+  it("keeps scheduled exchange running for other users when one user fails", async () => {
+    const config = createDefaultConfig();
+    config.users = [
+      { id: "u1", loginName: "u1", sesId: "s1" },
+      { id: "u2", loginName: "u2", sesId: "s2" }
+    ];
+    config.schedule.enabled = true;
+    config.schedule.exchange.enabled = true;
+    const stateRepo = new TaskStateRepository();
+    stateRepo.latestFor = async () => undefined;
+    const logs: string[] = [];
+    class TestScheduleService extends ScheduleService {
+      runs: string[] = [];
+      protected async nextDue() {
+        return dueItems.shift();
+      }
+      protected async runExchangeForUser(user: UserConfig): Promise<void> {
+        this.runs.push(user.id);
+        if (user.id === "u1") throw new Error("dns failed");
+      }
+    }
+    const dueItems = [
+      { task: "exchange" as const, time: new Date(Date.now() - 1), timeText: "07:00:00" },
+      undefined
+    ];
+    const service = new TestScheduleService({ config, stateRepo, logger: (message) => logs.push(message) });
+
+    await service.runForever();
+
+    expect(service.runs.sort()).toEqual(["u1", "u2"]);
+    expect(logs.some((line) => line.includes("u1 优惠券兑换失败: dns failed"))).toBe(true);
+    expect(logs.at(-1)).toBe("没有启用的定时计划。");
   });
 
   it("formats schedule log timestamp", () => {

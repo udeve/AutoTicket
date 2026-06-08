@@ -70,8 +70,8 @@ export class ScheduleService {
       this.logger(`下一次执行: ${formatScheduleCandidate(next)}`);
       await sleep(Math.max(0, next.time.getTime() - Date.now()));
       if (next.task === "daily") {
-        if (next.user) await this.runDailyForUser(next.user, false);
-        else await this.runOnce("daily", false);
+        if (next.user) await this.runDailyForUserSafely(next.user, false);
+        else await this.runDailyScheduleForAllUsers(false);
       } else {
         await this.runExchangeScheduleAt(next.timeText);
       }
@@ -102,11 +102,33 @@ export class ScheduleService {
         this.logger(`${user.id} 今日兑换已成功，跳过场次 ${startAt}。`);
         return;
       }
-      await this.runExchangeForUser(user, startAt, true);
+      await this.runExchangeForUserSafely(user, startAt, true);
     }));
   }
 
-  private async runDailyForUser(user: UserConfig, force: boolean): Promise<void> {
+  private async runDailyScheduleForAllUsers(force: boolean): Promise<void> {
+    for (const user of this.resolveUsers()) {
+      await this.runDailyForUserSafely(user, force);
+    }
+  }
+
+  private async runDailyForUserSafely(user: UserConfig, force: boolean): Promise<void> {
+    try {
+      await this.runDailyForUser(user, force);
+    } catch (error) {
+      this.logger(`${user.id} 每日任务失败: ${errorMessage(error)}`);
+    }
+  }
+
+  private async runExchangeForUserSafely(user: UserConfig, startAt: string | undefined, force: boolean): Promise<void> {
+    try {
+      await this.runExchangeForUser(user, startAt, force);
+    } catch (error) {
+      this.logger(`${user.id} 优惠券兑换失败: ${errorMessage(error)}`);
+    }
+  }
+
+  protected async runDailyForUser(user: UserConfig, force: boolean): Promise<void> {
     const existingRun = await this.options.stateRepo.hasRunToday(user.id, "daily");
     if (existingRun && !force) {
       this.logger(`${user.id} 今日每日任务已执行，跳过。`);
@@ -150,7 +172,7 @@ export class ScheduleService {
     }
   }
 
-  private async runExchangeForUser(user: UserConfig, startAt: string | undefined, force: boolean): Promise<void> {
+  protected async runExchangeForUser(user: UserConfig, startAt: string | undefined, force: boolean): Promise<void> {
     const existingRun = await this.options.stateRepo.hasRunToday(user.id, "exchange");
     if (existingRun?.status === "success" && !force) {
       this.logger(`${user.id} 今日兑换已成功，跳过。`);
@@ -212,7 +234,7 @@ export class ScheduleService {
     return this.options.config.users.filter((user) => selected.has(user.id));
   }
 
-  private async nextDue(): Promise<ScheduleCandidate | undefined> {
+  protected async nextDue(): Promise<ScheduleCandidate | undefined> {
     const candidates: ScheduleCandidate[] = [];
     if (this.options.config.schedule.daily.enabled) {
       const dailyCandidates = await this.nextDailyCandidates();
@@ -328,6 +350,10 @@ function formatExchangeAttemptLog(userId: string, attempt: { attempt: number; st
   const result = attempt.error ? `错误=${attempt.error}` : `消息=${attempt.msg ?? "无"}`;
   const final = attempt.isFinal ? " 命中停止条件" : "";
   return `${userId} 兑换尝试 #${attempt.attempt}: HTTP=${attempt.statusCode} ${result} 耗时=${Math.round(attempt.timing.totalMs)}ms${final}`;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function tomorrowKey(now = new Date()): string {
