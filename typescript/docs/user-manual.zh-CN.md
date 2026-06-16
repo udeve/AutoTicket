@@ -424,13 +424,16 @@ Server酱³发送地址由程序自动拼接为 `https://<uid>.push.ft07.com/sen
 
 通知失败不会中断核心任务。
 
-## 13. 钉钉机器人远程控制（Stream）
+## 13. 机器人远程控制（Bot）
 
-除了第 12 节「程序→你」的通知推送，还可以反过来用手机钉钉**远程控制**本地后台程序：发一条消息立即跑任务、查状态、重启调度等。
+除了第 12 节「程序→你」的通知推送，还可以反过来用聊天机器人**远程控制**本地后台程序：发一条消息立即跑任务、查状态、重启调度等。
 
-实现采用钉钉 **Stream 模式**：程序主动外连钉钉网关的 WebSocket，**不需要公网 IP、不需要内网穿透（frp/ngrok）**，适合控制本地常驻进程。这和第 12 节的「自定义群机器人 webhook 通知」是两套不同的机器人——通知机器人只能单向推送，远程控制需要**另建一个企业内部应用机器人**，两者并存、互不影响。
+命令入口支持两种通道，**都由本地主动外连、无需公网 IP、无需内网穿透（frp/ngrok）**：
 
-Server酱³ 是单向推送服务，没有「回复即指令」的入口，因此**命令入口只用钉钉**；任务执行结果会同时通过第 12 节已配置的通知通道推送。
+- **钉钉 Stream**：程序主动外连钉钉网关的 WebSocket。需在钉钉开放平台**另建一个企业内部应用机器人**（和第 12 节「自定义群机器人 webhook 通知」是两套不同的机器人，并存互不影响）。
+- **Server酱³ Bot**：通过 `getUpdates` **长轮询**接收回复，回复走 Bot 的 `sendMessage`。需 Server酱³ **1.1.0+ 内测版客户端**，在 App 里创建 Bot 拿到 Bot Token。
+
+任务执行结果会同时通过第 12 节已配置的通知通道推送。两个通道可只启用其一，也可同时启用。
 
 ### 13.1 创建钉钉企业内部应用
 
@@ -513,6 +516,35 @@ autoticket bot stop
 - `每日` / `兑换` 在 bot 进程内同进程触发，状态写入与 WebUI / 定时器存在相同量级的无锁并发读写；人工触发的低并发场景下可忽略。
 - 钉钉 Stream 的帧协议以钉钉开放平台当前文档为准；相关常量集中在 `src/core/bot/provider/dingtalk/dingtalk-stream.client.ts` 顶部，线上联调若不符只需调整该文件。
 - bot 架构按「通道 provider + 命令注册表」解耦：新增钉钉之外的通道（如 Telegram、企业微信）或新增命令，各加一个独立文件并在注册表登记一行即可，无需改动调度核心。
+
+### 13.6 Server酱³ Bot 通道（长轮询）
+
+Server酱³ 1.1.0+ 内测版支持类 Telegram 的双向 Bot。配置步骤：
+
+1. 在官网 [sc3.ft07.com](https://sc3.ft07.com/) 的 SendKey 页面获得 **uid**（即 Bot 接口的 `chat_id`）。
+2. 安装 Server酱³ 1.1.0+ 客户端，用 Sendkey 登入，进入 Bot 管理界面新建一个 Bot，左滑编辑后查看 **Bot Token**。
+3. 在 `config/autoticket.json` 的 `bot` 段启用 `serverChan`：
+
+```json
+{
+  "bot": {
+    "enabled": true,
+    "serverChan": {
+      "enabled": true,
+      "botToken": "你的Bot Token",
+      "uid": "你的uid"
+    },
+    "security": { "allowedSenderIds": ["你的uid"] }
+  }
+}
+```
+
+- 程序通过 `getUpdates` **长轮询**（默认 25 秒）接收你在客户端发给 Bot 的消息，**无需公网 IP、无需 webhook**；回复通过 Bot 的 `sendMessage` 发回。断线自动退避重试。
+- Server酱³ Bot 的 `senderId` 即你的 `uid`，记得把 uid 加进 `security.allowedSenderIds`（白名单为空时仍 fail-closed）。
+- `botToken` 会与其他密钥一样自动脱敏；`uid` 属半敏感，请勿公开。
+- 文档未明示 Bot Token 的传递方式，代码按类 Telegram 惯例用 `Authorization: Bearer` 头；若线上鉴权不符，仅需改 `src/core/bot/provider/serverchan/serverchan-bot.client.ts` 里的 `authHeader` 一处。
+
+可用命令、`force` 用法、PM2 生命周期与 13.3/13.4 一致；两个通道共用同一套命令，体验完全相同。
 
 ## 14. 多用户定时执行
 

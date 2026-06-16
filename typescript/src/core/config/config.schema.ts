@@ -161,7 +161,8 @@ export const AppConfigSchema = z.object({
     enabled: false,
     security: { allowedSenderIds: [] },
     nlu: { enabled: false, ollamaUrl: "", model: "gemma3:4b" },
-    dingtalk: { enabled: false, clientId: "", clientSecret: "", robotCode: "" }
+    dingtalk: { enabled: false, clientId: "", clientSecret: "", robotCode: "" },
+    serverChan: { enabled: false, botToken: "", uid: "" }
   })
 });
 

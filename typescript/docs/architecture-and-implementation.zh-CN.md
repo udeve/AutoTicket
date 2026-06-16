@@ -193,9 +193,11 @@ HTTP 客户端使用 `undici`：
 远程控制层让用户通过聊天机器人反向控制本地后台程序（与 3.8 的单向通知互补）。设计上做了两层解耦：
 
 - **命令注册表**：`BotCommandHandler` 是统一命令接口，每条命令（`status`/`daily`/`exchange`/`restart`/`stop`/`start`/`logs`/`help`）是独立文件，在 `command/index.ts` 登记。`resolveBotCommand` 为纯函数，按首词 + 别名（中英文、大小写不敏感）解析。
-- **通道 provider**：`BotProvider` 是统一通道接口；钉钉 Stream 是 `provider/dingtalk/` 下一个自包含目录（schema + Stream 客户端 + 回复客户端）。`BotService` 只处理归一化的 `BotMessage`，对具体通道一无所知。
+- **通道 provider**：`BotProvider` 是统一通道接口；钉钉 Stream 是 `provider/dingtalk/` 下一个自包含目录（schema + Stream 客户端 + 回复客户端），Server酱³ Bot 是 `provider/serverchan/` 下另一个自包含目录（schema + 长轮询客户端）。`BotService` 只处理归一化的 `BotMessage`，对具体通道一无所知。
 
 钉钉 Stream 客户端 `DingTalkStreamClient` 维护一条到钉钉网关的 **WSS 出站长连**（无需公网 IP），负责取 token、注册连接、应用层心跳、消息分发与 ack、指数退避重连。所有帧解析/payload 提取/退避计算都是纯函数，便于单测。回复走入站消息携带的 `sessionWebhook`，复用 undici。
+
+Server酱³ Bot 客户端 `ServerChanBotClient` 用 `getUpdates` **长轮询**接收上行消息（无需公网 IP / webhook），用 `update_id` 维护 offset 自动去重，回复走 `sendMessage`。同样把 update 提取/body 构造做成纯函数以便单测。两个通道可同时启用，命令集完全一致。
 
 `BotService.handleMessage` 统一做：白名单校验（`allowedSenderIds` 为空时 fail-closed）→ 解析命令 → 在 bot 进程内同进程执行（任务命令直接调用 `ScheduleService.runOnce`）→ 回复。任务执行仍会触发 3.8 的通知插件，因此结果也会推送到已配置的钉钉/Server酱通道。
 
