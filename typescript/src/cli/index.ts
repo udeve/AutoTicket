@@ -11,7 +11,7 @@ import type { LoginResponse } from "../core/services/auth.service.js";
 import { startWebServer } from "../web/server.js";
 import { formatTaskStatusSummary, statePathForConfig, summarizeTaskRuns, TaskStateRepository, todayKey } from "../core/state/task-state.repository.js";
 import { formatDailySchedulePlan, ScheduleService, type ScheduledTaskType, tomorrowKey, withScheduleLogTimestamp } from "../core/schedule/schedule.service.js";
-import { logsPm2Schedule, restartPm2Schedule, startPm2Schedule, statusPm2Schedule, stopPm2Schedule } from "../core/schedule/pm2-manager.js";
+import { logsPm2Bot, logsPm2Schedule, restartPm2Bot, restartPm2Schedule, startPm2Bot, startPm2Schedule, statusPm2Bot, statusPm2Schedule, stopPm2Bot, stopPm2Schedule } from "../core/schedule/pm2-manager.js";
 import { redactSensitive, redactUserForDisplay } from "../core/utils/redaction.js";
 
 const program = new Command();
@@ -397,6 +397,55 @@ program
       host: options.host,
       port: options.port
     });
+  });
+
+const bot = program.command("bot").description("DingTalk Stream 远程控制");
+
+bot
+  .command("run")
+  .description("Run DingTalk Stream bot forever")
+  .option("-c, --config <path>", "config file path", DEFAULT_CONFIG_PATH)
+  .action(async (options) => {
+    const { runBotForever } = await import("../core/bot/bot.runner.js");
+    await runBotForever({ configPath: options.config });
+  });
+
+bot
+  .command("start")
+  .description("Start bot runner in PM2")
+  .option("-c, --config <path>", "config file path", DEFAULT_CONFIG_PATH)
+  .action(async (options) => {
+    console.log(await startPm2Bot({ configPath: options.config }));
+  });
+
+bot
+  .command("stop")
+  .description("Stop bot runner in PM2")
+  .action(async () => {
+    console.log(await stopPm2Bot());
+  });
+
+bot
+  .command("restart")
+  .description("Restart bot runner in PM2")
+  .option("-c, --config <path>", "config file path", DEFAULT_CONFIG_PATH)
+  .action(async (options) => {
+    console.log(await restartPm2Bot({ configPath: options.config }));
+  });
+
+bot
+  .command("status")
+  .description("Show PM2 bot runner status")
+  .action(async () => {
+    console.log(await statusPm2Bot());
+  });
+
+bot
+  .command("logs")
+  .description("Show PM2 bot runner logs")
+  .option("--lines <n>", "log lines", Number, 80)
+  .action(async (options) => {
+    console.log(await logsPm2Bot(options.lines));
   });
 
 program.parseAsync().catch((error) => {

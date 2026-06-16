@@ -178,6 +178,27 @@ HTTP 客户端使用 `undici`：
 
 通知不会参与核心请求逻辑；CLI、WebUI、TUI 都在任务结束后调用通知插件，因此通知失败不会影响兑换或每日任务本身。TUI 的消息通知设置页由 provider 注册表自动渲染，额外提供测试消息入口，用于验证钉钉 Webhook / Secret、Server酱 UID / SendKey 和网络是否可用。
 
+### 3.9 远程控制层（Bot）
+
+文件：
+
+- [src/core/bot/bot.types.ts](../src/core/bot/bot.types.ts)
+- [src/core/bot/bot.schema.ts](../src/core/bot/bot.schema.ts)
+- [src/core/bot/bot.service.ts](../src/core/bot/bot.service.ts)
+- [src/core/bot/bot.runner.ts](../src/core/bot/bot.runner.ts)
+- [src/core/bot/bot-reply.ts](../src/core/bot/bot-reply.ts)
+- [src/core/bot/command/](../src/core/bot/command)
+- [src/core/bot/provider/](../src/core/bot/provider)
+
+远程控制层让用户通过聊天机器人反向控制本地后台程序（与 3.8 的单向通知互补）。设计上做了两层解耦：
+
+- **命令注册表**：`BotCommandHandler` 是统一命令接口，每条命令（`status`/`daily`/`exchange`/`restart`/`stop`/`start`/`logs`/`help`）是独立文件，在 `command/index.ts` 登记。`resolveBotCommand` 为纯函数，按首词 + 别名（中英文、大小写不敏感）解析。
+- **通道 provider**：`BotProvider` 是统一通道接口；钉钉 Stream 是 `provider/dingtalk/` 下一个自包含目录（schema + Stream 客户端 + 回复客户端）。`BotService` 只处理归一化的 `BotMessage`，对具体通道一无所知。
+
+钉钉 Stream 客户端 `DingTalkStreamClient` 维护一条到钉钉网关的 **WSS 出站长连**（无需公网 IP），负责取 token、注册连接、应用层心跳、消息分发与 ack、指数退避重连。所有帧解析/payload 提取/退避计算都是纯函数，便于单测。回复走入站消息携带的 `sessionWebhook`，复用 undici。
+
+`BotService.handleMessage` 统一做：白名单校验（`allowedSenderIds` 为空时 fail-closed）→ 解析命令 → 在 bot 进程内同进程执行（任务命令直接调用 `ScheduleService.runOnce`）→ 回复。任务执行仍会触发 3.8 的通知插件，因此结果也会推送到已配置的钉钉/Server酱通道。
+
 ## 4. 核心流程
 
 ### 4.1 兑换流程

@@ -424,7 +424,97 @@ Server酱³发送地址由程序自动拼接为 `https://<uid>.push.ft07.com/sen
 
 通知失败不会中断核心任务。
 
-## 13. 多用户定时执行
+## 13. 钉钉机器人远程控制（Stream）
+
+除了第 12 节「程序→你」的通知推送，还可以反过来用手机钉钉**远程控制**本地后台程序：发一条消息立即跑任务、查状态、重启调度等。
+
+实现采用钉钉 **Stream 模式**：程序主动外连钉钉网关的 WebSocket，**不需要公网 IP、不需要内网穿透（frp/ngrok）**，适合控制本地常驻进程。这和第 12 节的「自定义群机器人 webhook 通知」是两套不同的机器人——通知机器人只能单向推送，远程控制需要**另建一个企业内部应用机器人**，两者并存、互不影响。
+
+Server酱³ 是单向推送服务，没有「回复即指令」的入口，因此**命令入口只用钉钉**；任务执行结果会同时通过第 12 节已配置的通知通道推送。
+
+### 13.1 创建钉钉企业内部应用
+
+1. 进入 [钉钉开放平台](https://open-dev.dingtalk.com/)，创建一个**企业内部应用**。
+2. 在「凭证与基础信息」记下 **AppKey**（即 `clientId`）和 **AppSecret**（即 `clientSecret`）。
+3. 给应用添加**机器人**能力，消息接收模式选择 **Stream 模式**（事件订阅 → Stream 推送）。`robotCode` 一般等于 AppKey。
+4. 订阅机器人的**单聊消息**（如需在群里 @机器人 控制，再订阅群聊消息）。
+5. 发布并上线应用版本。
+
+### 13.2 配置
+
+`config/autoticket.json` 会自动生成 `bot` 段：
+
+```json
+{
+  "bot": {
+    "enabled": true,
+    "dingtalk": {
+      "enabled": true,
+      "clientId": "你的AppKey",
+      "clientSecret": "你的AppSecret",
+      "robotCode": "你的AppKey"
+    },
+    "security": {
+      "allowedSenderIds": ["你的staffId"]
+    },
+    "nlu": {
+      "enabled": false,
+      "ollamaUrl": "",
+      "model": "gemma3:4b"
+    }
+  }
+}
+```
+
+- `security.allowedSenderIds` 是发送者白名单（钉钉的 `senderStaffId`）。**留空时 fail-closed：拒绝一切命令**。可以先留空启动一次，给机器人发任意一条消息，从后台日志里读到自己的 `staffId` 后再填入。
+- `clientSecret` 会和其他密钥一样自动脱敏后再落盘/输出；`clientId`（AppKey）属半敏感，请勿公开。
+- `nlu` 为可选的自然语言解析预留位（默认关闭，关键词命令已够用）。计划接入本地 Ollama + Gemma 做意图解析，当前未启用。
+
+### 13.3 启动与常驻
+
+前台运行（调试用）：
+
+```bash
+autoticket bot run
+```
+
+推荐用 PM2 后台常驻（与 `autoticket-schedule` 相互独立的进程）：
+
+```bash
+autoticket bot start
+autoticket bot restart
+autoticket bot status
+autoticket bot logs
+autoticket bot stop
+```
+
+启动成功后日志会打印 `dingtalk stream WSS 已连接`。断线会自动按指数退避重连。
+
+### 13.4 可用命令
+
+在钉钉里给机器人发消息（中英文均可，大小写不敏感）：
+
+| 命令 | 别名 | 说明 |
+| --- | --- | --- |
+| `状态` | `status` / `查询` | 查询今日每日任务与兑换执行状态 |
+| `每日` | `daily` / `签到` | 立即执行每日任务（所有计划用户） |
+| `兑换` | `exchange` / `券` | 立即执行优惠券兑换 |
+| `重启` | `restart` | 重启定时调度进程（PM2） |
+| `停止` | `stop` | 停止定时调度进程 |
+| `启动` | `start` | 启动定时调度进程 |
+| `日志` | `logs` | 查看调度日志，可带行数如 `日志 30` |
+| `帮助` | `help` / `?` | 列出可用命令 |
+
+`每日` / `兑换` 默认会跳过当天已执行（成功）的用户；加 `force`（或 `强制`、`--force`、`-f`）强制重跑，例如 `兑换 force`。任务执行前会先回复「开始执行」，结束后再回复结果，同时触发第 12 节的通知推送。
+
+### 13.5 注意事项
+
+- `重启/停止/启动/日志` 控制的是**定时调度**进程（`autoticket-schedule`），不影响 bot 自身（`autoticket-bot`）。
+- `每日` / `兑换` 在 bot 进程内同进程触发，状态写入与 WebUI / 定时器存在相同量级的无锁并发读写；人工触发的低并发场景下可忽略。
+- 钉钉 Stream 的帧协议以钉钉开放平台当前文档为准；相关常量集中在 `src/core/bot/provider/dingtalk/dingtalk-stream.client.ts` 顶部，线上联调若不符只需调整该文件。
+- bot 架构按「通道 provider + 命令注册表」解耦：新增钉钉之外的通道（如 Telegram、企业微信）或新增命令，各加一个独立文件并在注册表登记一行即可，无需改动调度核心。
+
+## 14. 多用户定时执行
 
 配置文件会自动生成 `schedule` 段。可以在 `config/autoticket.json` 中启用多用户定时任务：
 
@@ -515,9 +605,9 @@ autoticket schedule daily-plan --date 2026-06-05
 autoticket schedule logs
 ```
 
-## 14. 常见问题
+## 15. 常见问题
 
-### 14.1 WebUI 怎么打开
+### 15.1 WebUI 怎么打开
 
 ```bash
 pnpm build
@@ -530,7 +620,7 @@ autoticket web
 http://127.0.0.1:3210
 ```
 
-### 14.2 `User not found in config`
+### 15.2 `User not found in config`
 
 说明指定用户还没有保存。请先通过短信登录或密码登录保存：
 
@@ -538,11 +628,11 @@ http://127.0.0.1:3210
 autoticket login sms --user user1 --phone 13800000000 --code 123456
 ```
 
-### 14.3 登录后没有自动写入配置
+### 15.3 登录后没有自动写入配置
 
 只有接口返回 `result` 为 `"0"` 且包含 `login_name` / `ses_id` 时才会写入配置。请检查登录返回内容和终端提示。
 
-### 14.4 兑换没有按预期停止
+### 15.4 兑换没有按预期停止
 
 检查 `stopRules`：
 
@@ -556,7 +646,7 @@ autoticket login sms --user user1 --phone 13800000000 --code 123456
 
 程序会判断响应消息是否包含这些文本。若接口返回文案变化，需要同步调整。
 
-### 14.5 需要重新构建吗
+### 15.5 需要重新构建吗
 
 修改 TypeScript 源码或 WebUI 静态资源后需要重新构建：
 
@@ -566,9 +656,9 @@ pnpm build
 
 只修改配置文件不需要重新构建。
 
-## 15. 安全提醒
+## 16. 安全提醒
 
-- 程序会在任务状态落盘、CLI/TUI/WebUI 输出和后台日志输出前自动脱敏手机号、身份证号、银行卡号、`LOGIN_NAME`、`SES_ID`、密码、Token、钉钉 Webhook / Secret、Server酱 SendKey 等敏感信息。
+- 程序会在任务状态落盘、CLI/TUI/WebUI 输出和后台日志输出前自动脱敏手机号、身份证号、银行卡号、`LOGIN_NAME`、`SES_ID`、密码、Token、钉钉 Webhook / Secret、Server酱 SendKey、钉钉机器人 `clientSecret` 等敏感信息。
 - `config/autoticket.state.json` 如果已经存在旧的明文敏感数据，下一次读取状态文件时会自动回写为脱敏后的内容。
 - `config/autoticket.json` 是真实登录配置文件，为了能正常执行任务，仍会保存可用的 `loginName` 和 `sesId`。
 - 不要提交真实的 `config/autoticket.json`。

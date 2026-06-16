@@ -27,6 +27,23 @@ describe("config schema", () => {
     expect(config.notifications.serverChan.enabled).toBe(false);
     expect(config.notifications.serverChan.uid).toBe("");
     expect(config.notifications.serverChan.sendKey).toBe("");
+    expect(config.bot.enabled).toBe(false);
+    expect(config.bot.dingtalk.enabled).toBe(false);
+    expect(config.bot.security.allowedSenderIds).toEqual([]);
+    expect(config.bot.nlu.model).toBe("gemma3:4b");
+  });
+
+  it("parses and preserves bot config", () => {
+    const config = AppConfigSchema.parse({
+      bot: {
+        enabled: true,
+        dingtalk: { enabled: true, clientId: "dingXXX", clientSecret: "secret", robotCode: "dingXXX" },
+        security: { allowedSenderIds: ["staffId1"] }
+      }
+    });
+    expect(config.bot.enabled).toBe(true);
+    expect(config.bot.dingtalk.clientId).toBe("dingXXX");
+    expect(config.bot.security.allowedSenderIds).toEqual(["staffId1"]);
   });
 
   it("finds configured users", () => {

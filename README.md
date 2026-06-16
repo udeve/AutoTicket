@@ -44,6 +44,15 @@ node dist/cli/index.js web
 
 `config/autoticket.json` 会在首次运行时自动生成。短信/密码登录成功后，程序会自动保存或更新用户登录信息。
 
+**钉钉机器人远程控制**：除了结果推送，还能用手机钉钉反向控制本地后台程序（立即跑任务、查状态、重启调度等）。采用钉钉 **Stream 模式**，程序主动外连网关，无需公网 IP 或内网穿透：
+
+```bash
+node dist/cli/index.js bot run        # 前台运行
+node dist/cli/index.js bot start      # PM2 后台常驻（autoticket-bot）
+```
+
+在钉钉里发 `帮助` / `状态` / `兑换 force` / `重启` 等命令即可控制。配置与命令清单见 [用户使用手册 · 13. 钉钉机器人远程控制](typescript/docs/user-manual.zh-CN.md#13-钉钉机器人远程控制stream)，架构见 [架构说明 · 3.9 远程控制层](typescript/docs/architecture-and-implementation.zh-CN.md)。
+
 交互式 TUI 可直接完成登录、用户选择、兑换面额选择、钉钉通知配置和测试消息发送：
 
 ```bash

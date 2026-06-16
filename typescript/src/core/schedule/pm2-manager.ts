@@ -3,26 +3,41 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export const PM2_APP_NAME = "autoticket-schedule";
+export const PM2_BOT_APP_NAME = "autoticket-bot";
 
 export interface Pm2CommandOptions {
   configPath: string;
   cwd?: string;
 }
 
-export async function startPm2Schedule(options: Pm2CommandOptions): Promise<string> {
+interface Pm2AppStartOptions {
+  appName: string;
+  /** `dist/cli/index.js` 之后的子命令与参数，如 ["schedule", "run", "--config", path]。 */
+  args: string[];
+  cwd?: string;
+}
+
+/** 通用：用 PM2 以给定名字启动 CLI 子命令。schedule 与 bot 共用。 */
+async function startPm2App(options: Pm2AppStartOptions): Promise<string> {
   const cwd = options.cwd ?? process.cwd();
   const cliPath = resolve(cwd, "dist/cli/index.js");
-  return runPm2([
-    "start",
-    cliPath,
-    "--name",
-    PM2_APP_NAME,
-    "--",
-    "schedule",
-    "run",
-    "--config",
-    options.configPath
-  ], cwd);
+  return runPm2(["start", cliPath, "--name", options.appName, "--", ...options.args], cwd);
+}
+
+export async function startPm2Schedule(options: Pm2CommandOptions): Promise<string> {
+  return startPm2App({
+    appName: PM2_APP_NAME,
+    args: ["schedule", "run", "--config", options.configPath],
+    cwd: options.cwd
+  });
+}
+
+export async function startPm2Bot(options: Pm2CommandOptions): Promise<string> {
+  return startPm2App({
+    appName: PM2_BOT_APP_NAME,
+    args: ["bot", "run", "--config", options.configPath],
+    cwd: options.cwd
+  });
 }
 
 export async function stopPm2Schedule(cwd = process.cwd()): Promise<string> {
@@ -41,6 +56,24 @@ export async function statusPm2Schedule(cwd = process.cwd()): Promise<string> {
 
 export async function logsPm2Schedule(lines: number, cwd = process.cwd()): Promise<string> {
   return runPm2(["logs", PM2_APP_NAME, "--lines", String(lines), "--nostream"], cwd);
+}
+
+export async function stopPm2Bot(cwd = process.cwd()): Promise<string> {
+  return runPm2(["delete", PM2_BOT_APP_NAME], cwd);
+}
+
+export async function restartPm2Bot(options: Pm2CommandOptions): Promise<string> {
+  const cwd = options.cwd ?? process.cwd();
+  await runPm2(["delete", PM2_BOT_APP_NAME], cwd).catch(() => undefined);
+  return startPm2Bot({ ...options, cwd });
+}
+
+export async function statusPm2Bot(cwd = process.cwd()): Promise<string> {
+  return runPm2(["status", PM2_BOT_APP_NAME], cwd);
+}
+
+export async function logsPm2Bot(lines: number, cwd = process.cwd()): Promise<string> {
+  return runPm2(["logs", PM2_BOT_APP_NAME, "--lines", String(lines), "--nostream"], cwd);
 }
 
 async function runPm2(args: string[], cwd: string): Promise<string> {

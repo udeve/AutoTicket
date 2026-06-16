@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BotConfigSchema } from "../bot/bot.schema.js";
 
 export const DEFAULT_EXCHANGE_STOP_RULES = [
   { match: "兑换中", status: "success" },
@@ -155,8 +156,16 @@ export const AppConfigSchema = z.object({
       requestTimeoutMs: 5000,
       stopAfterSuccess: true
     }
+  }),
+  bot: BotConfigSchema.default({
+    enabled: false,
+    security: { allowedSenderIds: [] },
+    nlu: { enabled: false, ollamaUrl: "", model: "gemma3:4b" },
+    dingtalk: { enabled: false, clientId: "", clientSecret: "", robotCode: "" }
   })
 });
+
+export type { BotConfig } from "../bot/bot.schema.js";
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 export type UserConfig = z.infer<typeof UserConfigSchema>;
