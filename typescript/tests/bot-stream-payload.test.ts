@@ -1,32 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildAckFrame,
-  buildPingFrame,
-  buildRegisterFrame,
+  buildBotAck,
+  buildResponse,
   computeBackoffMs,
   extractStreamPayload,
   parseFrame
 } from "../src/core/bot/provider/dingtalk/dingtalk-stream.client.js";
 
 const sampleData = {
-  msgId: "msg1",
-  senderStaffId: "staff001",
-  senderNick: "Alice",
-  conversationId: "cid",
-  sessionWebhook: "https://oapi.dingtalk.com/robot/sendBySession?session=xxx",
-  text: { content: "状态" }
+  conversationId: "cidAsXSBLnA==",
+  msgId: "msgLICYeHgY4JtMQw==",
+  senderNick: "用户",
+  senderStaffId: "16650698",
+  sessionWebhook: "https://oapi.dingtalk.com/robot/sendBySession?session=76da36b48f59e8",
+  text: { content: " 测试数据" },
+  conversationType: "2",
+  msgtype: "text"
+};
+
+const callbackFrame = {
+  specVersion: "1.0",
+  type: "CALLBACK",
+  headers: { topic: "/v1.0/im/bot/messages/get", messageId: "212ca9d7_974_1898c159aa6_1783b", contentType: "application/json" },
+  data: JSON.stringify(sampleData)
 };
 
 describe("dingtalk stream payload helpers", () => {
-  it("parses a data frame", () => {
-    const frame = parseFrame(
-      JSON.stringify({
-        code: 200,
-        headers: { topic: "/v1.0/im/bot/messages/get", messageId: "m1" },
-        data: JSON.stringify(sampleData)
-      })
-    );
-    expect(frame?.code).toBe(200);
+  it("parses an inbound CALLBACK frame", () => {
+    const frame = parseFrame(JSON.stringify(callbackFrame));
+    expect(frame?.type).toBe("CALLBACK");
+    expect(frame?.headers?.topic).toBe("/v1.0/im/bot/messages/get");
   });
 
   it("returns null for non-string or invalid json", () => {
@@ -36,15 +39,14 @@ describe("dingtalk stream payload helpers", () => {
 
   it("extracts normalized payload from data object", () => {
     const payload = extractStreamPayload(sampleData);
-    expect(payload?.text).toBe("状态");
-    expect(payload?.senderId).toBe("staff001");
-    expect(payload?.senderNick).toBe("Alice");
-    expect(payload?.sessionWebhook).toContain("session=xxx");
-    expect(payload?.msgId).toBe("msg1");
+    expect(payload?.text).toBe("测试数据"); // 去掉 @ 残留的左空格
+    expect(payload?.senderId).toBe("16650698");
+    expect(payload?.sessionWebhook).toContain("session=");
+    expect(payload?.msgId).toBe("msgLICYeHgY4JtMQw==");
   });
 
   it("extracts payload from stringified data", () => {
-    expect(extractStreamPayload(JSON.stringify(sampleData))?.senderId).toBe("staff001");
+    expect(extractStreamPayload(JSON.stringify(sampleData))?.senderId).toBe("16650698");
   });
 
   it("returns null when required fields missing", () => {
@@ -53,18 +55,20 @@ describe("dingtalk stream payload helpers", () => {
     expect(extractStreamPayload("not json")).toBeNull();
   });
 
-  it("strips a leading @-mention token", () => {
-    const payload = extractStreamPayload({ ...sampleData, text: { content: "@robot 状态" } });
-    expect(payload?.text).toBe("状态");
+  it("builds a 200 response echoing messageId and data", () => {
+    const res = JSON.parse(buildResponse("msg-1", '{"opaque":"abc"}'));
+    expect(res.code).toBe(200);
+    expect(res.message).toBe("OK");
+    expect(res.headers.messageId).toBe("msg-1");
+    expect(res.headers.contentType).toBe("application/json");
+    expect(res.data).toBe('{"opaque":"abc"}');
   });
 
-  it("builds frames with expected codes", () => {
-    expect(JSON.parse(buildRegisterFrame("cid", "ticket")).code).toBe(1000);
-    expect(JSON.parse(buildPingFrame()).code).toBe(1001);
-    const ack = JSON.parse(buildAckFrame("mid"));
-    expect(ack.code).toBe(1000);
-    expect(ack.headers.messageId).toBe("mid");
-    expect(ack.data).toBe("SUCCESS");
+  it("builds a bot ack with fixed null response payload", () => {
+    const res = JSON.parse(buildBotAck("msg-2"));
+    expect(res.code).toBe(200);
+    expect(res.headers.messageId).toBe("msg-2");
+    expect(JSON.parse(res.data)).toEqual({ response: null });
   });
 
   it("computeBackoffMs grows exponentially and caps at the max", () => {

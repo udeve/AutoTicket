@@ -21,25 +21,28 @@ export interface DingTalkStreamClientOptions {
   socketFactory?: (url: string) => WebSocket;
 }
 
-// ── 钉钉 Stream (dingservice) 协议常量 ────────────────────────────────
-// 注意：以下 code 与帧结构依据钉钉开放平台 Stream 协议；接入时如与当前文档不符，
-// 仅需在此处调整，影响局限在本文件（见 plan 风险 4）。
+// ── 钉钉 Stream 协议常量（依据开放平台协议文档）────────────────────────
+// https://open.dingtalk.com/document/direction/stream-mode-protocol-access-description
 const GATEWAY_BASE = "https://api.dingtalk.com";
-const TOKEN_PATH = "/v1.0/oauth2/accessToken";
 const CONNECTION_PATH = "/v1.0/gateway/connections/open";
-const TOPIC_BOT_MESSAGE = "bot/messages/get";
-const FRAME_CODE_REGISTER = 1000; // 客户端注册 / ACK
-const FRAME_CODE_PING = 1001; // 应用层心跳
-const FRAME_CODE_DATA = 200; // 服务端下发业务数据
+const TOPIC_BOT_MESSAGE = "/v1.0/im/bot/messages/get";
+const TOPIC_PING = "ping";
+const TOPIC_DISCONNECT = "disconnect";
+const TYPE_SYSTEM = "SYSTEM";
+const TYPE_CALLBACK = "CALLBACK";
+const FRAME_CODE_OK = 200; // 客户端响应成功码
 
-const PING_INTERVAL_MS = 50_000;
 const BACKOFF_BASE_MS = 2_000;
 const BACKOFF_MAX_MS = 60_000;
 
+/** 协议帧。入站推送用 type；出站响应用 code。 */
 interface StreamFrame {
-  code: number;
+  type?: string;
+  code?: number;
   headers?: Record<string, unknown>;
   data?: unknown;
+  specVersion?: string;
+  message?: string;
 }
 
 /**
@@ -51,7 +54,6 @@ export class DingTalkStreamClient {
   private readonly socketFactory: (url: string) => WebSocket;
   private running = false;
   private socket: WebSocket | undefined;
-  private pingTimer: ReturnType<typeof setInterval> | undefined;
   private attempt = 0;
 
   constructor(private readonly options: DingTalkStreamClientOptions) {
@@ -77,7 +79,6 @@ export class DingTalkStreamClient {
 
   async stop(): Promise<void> {
     this.running = false;
-    this.clearPing();
     try {
       this.socket?.close();
     } catch {
@@ -86,94 +87,95 @@ export class DingTalkStreamClient {
   }
 
   private async connect(): Promise<void> {
-    const accessToken = await this.fetchAccessToken();
-    const { endpoint, ticket } = await this.openConnection(accessToken);
+    // 直接用 clientId + clientSecret 获取 endpoint 和 ticket，无需 accessToken
+    const { endpoint, ticket } = await this.openConnection();
+
+    // ticket 作为 URL query 参数传入，这是钉钉 Stream 协议的握手方式
+    const url = `${endpoint}?ticket=${encodeURIComponent(ticket)}`;
+
     await new Promise<void>((resolve, reject) => {
-      const socket = this.socketFactory(endpoint);
+      const socket = this.socketFactory(url);
       this.socket = socket;
+
       socket.addEventListener("open", () => {
         this.attempt = 0;
         this.logger("dingtalk stream WSS 已连接。");
-        socket.send(buildRegisterFrame(this.options.clientId, ticket));
-        this.startPing();
+        // 连接建立后无需额外注册帧；服务端会主动发 ping，客户端在 handleRaw 里回显。
       });
+
       socket.addEventListener("message", (event: MessageEvent) => {
         void this.handleRaw(event.data);
       });
+
       socket.addEventListener("close", () => {
-        this.clearPing();
         resolve();
       });
-      socket.addEventListener("error", () => {
-        this.clearPing();
-        reject(new Error("dingtalk stream WSS error"));
+
+      socket.addEventListener("error", (event) => {
+        const detail = (event as ErrorEvent).message ?? JSON.stringify(event);
+        reject(new Error(`dingtalk stream WSS error: ${detail}`));
       });
     });
   }
 
   private async handleRaw(raw: unknown): Promise<void> {
     const frame = parseFrame(raw);
-    if (!frame || frame.code !== FRAME_CODE_DATA) return;
-    const topic = typeof frame.headers?.topic === "string" ? frame.headers.topic : "";
-    if (!topic.includes(TOPIC_BOT_MESSAGE)) return;
-    const payload = extractStreamPayload(frame.data);
-    if (!payload) return;
-    try {
-      await this.options.onMessage(payload);
-    } catch (error) {
-      this.logger(`处理 dingtalk 消息异常: ${error instanceof Error ? error.message : String(error)}`);
+    if (!frame?.headers) return;
+    const topic = typeof frame.headers.topic === "string" ? frame.headers.topic : "";
+    const messageId = typeof frame.headers.messageId === "string" ? frame.headers.messageId : "";
+
+    // 系统推送：ping 回显 opaque；disconnect 触发重连。均为服务端发起。
+    if (frame.type === TYPE_SYSTEM) {
+      if (topic === TOPIC_PING) {
+        const echo = typeof frame.data === "string" ? frame.data : JSON.stringify(frame.data ?? {});
+        this.send(buildResponse(messageId, echo));
+      } else if (topic === TOPIC_DISCONNECT) {
+        this.logger("dingtalk stream 收到 disconnect，将重连。");
+        try {
+          this.socket?.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
     }
-    this.ack(frame);
+
+    // 机器人消息回调
+    if (frame.type === TYPE_CALLBACK && topic.includes(TOPIC_BOT_MESSAGE)) {
+      const payload = extractStreamPayload(frame.data);
+      if (payload) {
+        try {
+          await this.options.onMessage(payload);
+        } catch (error) {
+          this.logger(`处理 dingtalk 消息异常: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      if (messageId) this.send(buildBotAck(messageId));
+    }
   }
 
-  private ack(frame: StreamFrame): void {
-    const messageId = frame.headers?.messageId;
-    if (typeof messageId !== "string") return;
+  private send(frame: string): void {
     try {
-      this.socket?.send(buildAckFrame(messageId));
+      this.socket?.send(frame);
     } catch {
       /* ignore */
     }
   }
 
-  private startPing(): void {
-    this.clearPing();
-    this.pingTimer = setInterval(() => {
-      try {
-        this.socket?.send(buildPingFrame());
-      } catch {
-        /* ignore */
-      }
-    }, PING_INTERVAL_MS);
-  }
-
-  private clearPing(): void {
-    if (this.pingTimer) clearInterval(this.pingTimer);
-    this.pingTimer = undefined;
-  }
-
-  private async fetchAccessToken(): Promise<string> {
-    const data = await postJson(`${GATEWAY_BASE}${TOKEN_PATH}`, {
-      appKey: this.options.clientId,
-      appSecret: this.options.clientSecret
-    });
-    if (typeof data.accessToken !== "string" || !data.accessToken) {
-      throw new Error("获取钉钉 accessToken 失败，请检查 clientId/clientSecret。");
-    }
-    return data.accessToken;
-  }
-
-  private async openConnection(accessToken: string): Promise<{ endpoint: string; ticket: string }> {
+  private async openConnection(): Promise<{ endpoint: string; ticket: string }> {
     const data = await postJson(`${GATEWAY_BASE}${CONNECTION_PATH}`, {
       clientId: this.options.clientId,
       clientSecret: this.options.clientSecret,
-      grants: [],
-      token: accessToken
+      subscriptions: [{ type: "CALLBACK", topic: "/v1.0/im/bot/messages/get" }],
+      ua: "autoticket-stream/1.0.0"
     });
     if (typeof data.endpoint !== "string" || !data.endpoint) {
       throw new Error("打开钉钉 Stream 连接失败：未返回 endpoint。");
     }
-    return { endpoint: data.endpoint, ticket: typeof data.ticket === "string" ? data.ticket : "" };
+    return {
+      endpoint: data.endpoint,
+      ticket: typeof data.ticket === "string" ? data.ticket : ""
+    };
   }
 }
 
@@ -210,20 +212,19 @@ export function extractStreamPayload(data: unknown): StreamMessagePayload | null
   };
 }
 
-export function buildRegisterFrame(clientId: string, ticket: string): string {
+/** 客户端响应帧：code 200 + 回传 messageId + contentType + data(JSON 字符串)。 */
+export function buildResponse(messageId: string, dataJson: string): string {
   return JSON.stringify({
-    code: FRAME_CODE_REGISTER,
-    headers: { Authorization: ticket },
-    data: JSON.stringify({ clientId })
+    code: FRAME_CODE_OK,
+    message: "OK",
+    headers: { messageId, contentType: "application/json" },
+    data: dataJson
   });
 }
 
-export function buildPingFrame(): string {
-  return JSON.stringify({ code: FRAME_CODE_PING });
-}
-
-export function buildAckFrame(messageId: string): string {
-  return JSON.stringify({ code: FRAME_CODE_REGISTER, headers: { messageId }, data: "SUCCESS" });
+/** 机器人消息的 ACK：data 固定为 {"response":null}（钉钉服务端暂不使用该字段）。 */
+export function buildBotAck(messageId: string): string {
+  return buildResponse(messageId, '{"response":null}');
 }
 
 /** 指数退避基础值（不含抖动），单位 ms。纯函数。 */
