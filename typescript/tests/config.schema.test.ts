@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AppConfigSchema, findUser } from "../src/core/config/config.schema.js";
 import { ConfigRepository } from "../src/core/config/config.repository.js";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -80,6 +80,26 @@ describe("config schema", () => {
         }
       }
     })).toThrow();
+  });
+
+  it("writes missing top-level sections into an existing config on load", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "autoticket-"));
+    try {
+      const configPath = join(dir, "autoticket.json");
+      // 模拟 bot 段出现之前的老配置文件
+      await writeFile(configPath, JSON.stringify({ users: [], exchange: { exchangeId: "10" } }), "utf8");
+
+      const repo = new ConfigRepository(configPath);
+      const config = await repo.load();
+      expect(config.bot).toBeDefined();
+      expect(config.bot.enabled).toBe(false);
+
+      // 缺失的 bot 段应被回写到磁盘
+      const onDisk = JSON.parse(await readFile(configPath, "utf8")) as { bot?: unknown };
+      expect(onDisk.bot).toBeDefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("creates missing config files and upserts users", async () => {

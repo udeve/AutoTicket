@@ -19,7 +19,14 @@ export class ConfigRepository {
   async load(): Promise<AppConfig> {
     try {
       const text = await readFile(this.path, "utf8");
-      return AppConfigSchema.parse(JSON.parse(text));
+      const parsed = JSON.parse(text);
+      const normalized = AppConfigSchema.parse(parsed);
+      // 老文件可能缺少新顶层段（如 bot）。补齐默认值后若与磁盘内容不一致则回写，
+      // 使配置文件随 schema 演进自更新；幂等，只在首次缺段时写一次。
+      if (JSON.stringify(normalized) !== JSON.stringify(parsed)) {
+        await this.save(normalized);
+      }
+      return normalized;
     } catch (error) {
       if (isNotFound(error)) {
         const config = createDefaultConfig();
