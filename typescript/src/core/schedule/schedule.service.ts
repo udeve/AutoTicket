@@ -131,8 +131,8 @@ export class ScheduleService {
 
   protected async runDailyForUser(user: UserConfig, force: boolean): Promise<void> {
     const existingRun = await this.options.stateRepo.hasRunToday(user.id, "daily");
-    if (existingRun && !force) {
-      this.logger(`${user.id} 今日每日任务已执行，跳过。`);
+    if (existingRun?.status === "success" && !force) {
+      this.logger(`${user.id} 今日每日任务已成功，跳过。`);
       return;
     }
 

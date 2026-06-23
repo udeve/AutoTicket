@@ -1,8 +1,36 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { formatDailySchedulePlan, randomShardIndexes, randomTimeTextInRange, randomTimeTextInShard, formatScheduleLogTimestamp, nextDailyOccurrence, nextOccurrence, ScheduleService, tomorrowKey, withScheduleLogTimestamp } from "../src/core/schedule/schedule.service.js";
 import { createDefaultConfig } from "../src/core/config/config.repository.js";
-import { TaskStateRepository, type TaskState } from "../src/core/state/task-state.repository.js";
+import { TaskStateRepository, type TaskRunRecord, type TaskState } from "../src/core/state/task-state.repository.js";
+import { TaskService, type DailyWorkflowResult } from "../src/core/services/task.service.js";
+import { ApiClient } from "../src/core/http/api-client.js";
 import type { UserConfig } from "../src/core/config/config.schema.js";
+
+const successWorkflow: DailyWorkflowResult = {
+  dailyLogin: { result: "0", msg: "登录成功" },
+  signins: [{ result: "0", msg: "签到成功" }],
+  comment: { result: "0", msg: "留言成功" },
+  query: { result: "0", msg: "查询成功" },
+  steps: [
+    { key: "dailyLogin", label: "登录签到", success: true, result: "0", msg: "登录成功" },
+    { key: "signin1", label: "签到 1/3", success: true, result: "0", msg: "签到成功" },
+    { key: "comment", label: "发表评论", success: true, result: "0", msg: "留言成功" },
+    { key: "query", label: "积分查询", success: true, result: "0", msg: "查询成功" }
+  ]
+};
+
+function dailyRunRecord(userId: string, status: "success" | "failure"): TaskRunRecord {
+  return {
+    id: `daily-${userId}-1`,
+    date: new Date().toISOString().slice(0, 10),
+    userId,
+    task: "daily",
+    status,
+    startedAt: "2026-06-17T01:00:00.000Z",
+    finishedAt: "2026-06-17T01:00:05.000Z",
+    message: status === "success" ? "每日任务全部执行成功。" : "HTTP/2 stream timeout"
+  };
+}
 
 describe("schedule service", () => {
   it("calculates next occurrence today", () => {
@@ -175,5 +203,58 @@ describe("schedule service", () => {
     const lines: string[] = [];
     withScheduleLogTimestamp((message) => lines.push(message))("第一行\n第二行");
     expect(lines[0]).toMatch(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] 第一行\n\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] 第二行$/);
+  });
+
+  describe("daily skip decision", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("re-runs the daily task when today's run failed", async () => {
+      const workflowSpy = vi.spyOn(TaskService.prototype, "runDailyWorkflow").mockResolvedValue(successWorkflow);
+      vi.spyOn(ApiClient.prototype, "close").mockResolvedValue(undefined);
+      const config = createDefaultConfig();
+      config.users = [{ id: "u1", loginName: "u1", sesId: "s1" }];
+      const stateRepo = new TaskStateRepository();
+      stateRepo.latestFor = async () => dailyRunRecord("u1", "failure");
+      const logs: string[] = [];
+      const service = new ScheduleService({ config, stateRepo, logger: (message) => logs.push(message) });
+
+      await service.runOnce("daily");
+
+      expect(workflowSpy).toHaveBeenCalledTimes(1);
+      expect(logs.some((line) => line.includes("已成功，跳过"))).toBe(false);
+      expect(logs.some((line) => line.includes("u1 每日任务完成"))).toBe(true);
+    });
+
+    it("skips the daily task when today's run already succeeded", async () => {
+      const workflowSpy = vi.spyOn(TaskService.prototype, "runDailyWorkflow").mockResolvedValue(successWorkflow);
+      const config = createDefaultConfig();
+      config.users = [{ id: "u1", loginName: "u1", sesId: "s1" }];
+      const stateRepo = new TaskStateRepository();
+      stateRepo.latestFor = async () => dailyRunRecord("u1", "success");
+      const logs: string[] = [];
+      const service = new ScheduleService({ config, stateRepo, logger: (message) => logs.push(message) });
+
+      await service.runOnce("daily");
+
+      expect(workflowSpy).not.toHaveBeenCalled();
+      expect(logs.some((line) => line.includes("u1 今日每日任务已成功，跳过。"))).toBe(true);
+    });
+
+    it("re-runs the daily task on failure when force is set even after success", async () => {
+      const workflowSpy = vi.spyOn(TaskService.prototype, "runDailyWorkflow").mockResolvedValue(successWorkflow);
+      vi.spyOn(ApiClient.prototype, "close").mockResolvedValue(undefined);
+      const config = createDefaultConfig();
+      config.users = [{ id: "u1", loginName: "u1", sesId: "s1" }];
+      const stateRepo = new TaskStateRepository();
+      stateRepo.latestFor = async () => dailyRunRecord("u1", "success");
+      const logs: string[] = [];
+      const service = new ScheduleService({ config, stateRepo, logger: (message) => logs.push(message) });
+
+      await service.runOnce("daily", true);
+
+      expect(workflowSpy).toHaveBeenCalledTimes(1);
+    });
   });
 });
