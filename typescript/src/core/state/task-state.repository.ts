@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
 import { z } from "zod";
 import { formatExchangeAmount, formatExchangeStartTime } from "../exchange/options.js";
 import { redactSensitive, redactText } from "../utils/redaction.js";
@@ -69,7 +69,12 @@ export function todayKey(date = new Date()): string {
 }
 
 export class TaskStateRepository {
-  constructor(readonly path = DEFAULT_STATE_PATH) {}
+  private readonly writeLock = new AsyncMutex();
+  private readonly tmpPath: string;
+
+  constructor(readonly path = DEFAULT_STATE_PATH) {
+    this.tmpPath = resolve(dirname(resolve(this.path)), `.${basename(this.path)}.${process.pid}.tmp`);
+  }
 
   async load(): Promise<TaskState> {
     try {
@@ -87,21 +92,34 @@ export class TaskStateRepository {
   }
 
   async save(state: TaskState): Promise<void> {
+    return this.writeLock.run(() => this.writeState(state));
+  }
+
+  /** Atomic, on-disk write. Caller is responsible for holding writeLock if part of a read-modify-write. */
+  private async writeState(state: TaskState): Promise<void> {
     const normalized = TaskStateSchema.parse(state);
+    const payload = `${JSON.stringify(redactSensitive(normalized), null, 2)}\n`;
+    // Stage in a temp file then rename, so a crash or a concurrent writer can
+    // never leave a half-written (invalid JSON) state file.
     await mkdir(dirname(resolve(this.path)), { recursive: true });
-    await writeFile(this.path, `${JSON.stringify(redactSensitive(normalized), null, 2)}\n`, "utf8");
+    await writeFile(this.tmpPath, payload, "utf8");
+    await rename(this.tmpPath, resolve(this.path));
   }
 
   async append(record: Omit<TaskRunRecord, "id" | "date"> & { date?: string }): Promise<TaskRunRecord> {
-    const state = await this.load();
-    const nextRecord: TaskRunRecord = {
-      ...record,
-      id: `${record.task}-${record.userId}-${Date.now()}`,
-      date: record.date ?? todayKey()
-    };
-    state.runs.push(nextRecord);
-    await this.save(state);
-    return nextRecord;
+    // Serialize the read-modify-write so concurrent appends (e.g. parallel
+    // exchange runs for multiple users) queue instead of clobbering each other.
+    return this.writeLock.run(async () => {
+      const state = await this.load();
+      const nextRecord: TaskRunRecord = {
+        ...record,
+        id: `${record.task}-${record.userId}-${Date.now()}`,
+        date: record.date ?? todayKey()
+      };
+      state.runs.push(nextRecord);
+      await this.writeState(state);
+      return nextRecord;
+    });
   }
 
   async latestFor(userId: string, task: TaskRunType, date = todayKey()): Promise<TaskRunRecord | undefined> {
@@ -124,16 +142,18 @@ export class TaskStateRepository {
   }
 
   async saveDailyRandomTime(record: DailyRandomTimeRecord): Promise<DailyRandomTimeRecord> {
-    const state = await this.load();
-    state.dailyRandomTimes = state.dailyRandomTimes.filter((item) =>
-      item.userId !== record.userId ||
-      item.date !== record.date ||
-      item.rangeStartHour !== record.rangeStartHour ||
-      item.rangeEndHour !== record.rangeEndHour
-    );
-    state.dailyRandomTimes.push(record);
-    await this.save(state);
-    return record;
+    return this.writeLock.run(async () => {
+      const state = await this.load();
+      state.dailyRandomTimes = state.dailyRandomTimes.filter((item) =>
+        item.userId !== record.userId ||
+        item.date !== record.date ||
+        item.rangeStartHour !== record.rangeStartHour ||
+        item.rangeEndHour !== record.rangeEndHour
+      );
+      state.dailyRandomTimes.push(record);
+      await this.writeState(state);
+      return record;
+    });
   }
 }
 
@@ -308,4 +328,23 @@ function isExchangeSummary(value: unknown): value is { attempts?: number; finalA
 
 function isNotFound(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
+
+/**
+ * Minimal promise-chain mutex. Serializes async critical sections within a
+ * process so concurrent callers run one after another instead of interleaving.
+ */
+class AsyncMutex {
+  private tail: Promise<void> = Promise.resolve();
+
+  run<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(task);
+    // Keep the chain alive whether or not the task rejects, so a failure in one
+    // caller never blocks subsequent callers.
+    this.tail = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  }
 }

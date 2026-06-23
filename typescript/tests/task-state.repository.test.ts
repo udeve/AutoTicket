@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -130,5 +130,32 @@ describe("task state repository", () => {
 
     const text = formatTaskStatusSummary([{ id: "u1" }], summarizeTaskRuns(runs), "2026-06-03");
     expect(text).toContain("优惠券兑换: SUCC 4元 07:00 并发5 间隔50ms 最多100次");
+  });
+
+  it("serializes concurrent appends without losing records or corrupting the file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "autoticket-state-"));
+    try {
+      const repo = new TaskStateRepository(join(dir, "state.json"));
+      const users = Array.from({ length: 20 }, (_, i) => `u${i}`);
+      await Promise.all(users.map((userId) => repo.append({
+        task: "exchange",
+        userId,
+        status: "success",
+        startedAt: "2026-06-03T00:00:00.000Z",
+        finishedAt: "2026-06-03T00:00:01.000Z",
+        message: "兑换成功"
+      })));
+
+      // File on disk must always be valid JSON.
+      const text = await readFile(repo.path, "utf8");
+      expect(() => JSON.parse(text)).not.toThrow();
+
+      // Every concurrent append must have landed — no lost updates.
+      const state = JSON.parse(text);
+      expect(state.runs).toHaveLength(20);
+      expect(new Set(state.runs.map((run: { userId: string }) => run.userId)).size).toBe(20);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
