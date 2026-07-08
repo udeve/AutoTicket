@@ -22,8 +22,8 @@ import { InfoRow } from "./components/InfoRow.js";
 import { Menu } from "./components/Menu.js";
 import { TextPrompt } from "./components/TextPrompt.js";
 
-type Screen = "home" | "login" | "direct" | "sms" | "password" | "users" | "status" | "state" | "daily" | "exchange" | "confirmDaily" | "confirmExchange" | "settings" | "amount" | "startTime" | "schedule" | "scheduleUsers" | "scheduleDaily" | "scheduleDailyTime" | "scheduleDailyRangeStart" | "scheduleDailyRangeEnd" | "scheduleExchange" | "scheduleExchangeTimes" | "notifications" | "notificationProvider" | "web" | "summary" | "message";
-type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeConcurrency" | "scheduleExchangeIntervalMs" | "scheduleExchangeIntervalMaxMs" | "scheduleExchangeMaxAttempts" | "scheduleExchangeRequestTimeoutMs" | `notification:${NotificationProviderId}:${string}`;
+type Screen = "home" | "login" | "direct" | "sms" | "password" | "users" | "status" | "state" | "daily" | "exchange" | "confirmDaily" | "confirmExchange" | "settings" | "amount" | "startTime" | "schedule" | "scheduleUsers" | "scheduleUserList" | "scheduleUserSettings" | "scheduleDaily" | "scheduleDailyTime" | "scheduleDailyRangeStart" | "scheduleDailyRangeEnd" | "scheduleExchange" | "scheduleExchangeTimes" | "notifications" | "notificationProvider" | "web" | "summary" | "message";
+type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeConcurrency" | "scheduleExchangeIntervalMs" | "scheduleExchangeIntervalMaxMs" | "scheduleExchangeMaxAttempts" | "scheduleExchangeRequestTimeoutMs" | "userScheduleExchangeId" | `notification:${NotificationProviderId}:${string}`;
 type LoginScreen = "direct" | "sms" | "password";
 const parentScreen: Partial<Record<Screen, Screen>> = {
   login: "home",
@@ -42,6 +42,8 @@ const parentScreen: Partial<Record<Screen, Screen>> = {
   startTime: "settings",
   schedule: "home",
   scheduleUsers: "schedule",
+  scheduleUserList: "scheduleUsers",
+  scheduleUserSettings: "scheduleUserList",
   scheduleDaily: "schedule",
   scheduleDailyTime: "scheduleDaily",
   scheduleDailyRangeStart: "scheduleDaily",
@@ -72,6 +74,7 @@ function App() {
   const [restoreIndexes, setRestoreIndexes] = useState<Partial<Record<Screen, number>>>({});
   const [currentIntegral, setCurrentIntegral] = useState<string>("未查询");
   const [selectedNotificationProviderId, setSelectedNotificationProviderId] = useState<NotificationProviderId>("dingtalk");
+  const [selectedScheduleUserId, setSelectedScheduleUserId] = useState<string>("");
 
   useEffect(() => {
     void reloadConfig();
@@ -270,6 +273,15 @@ function App() {
   async function updateScheduleConfig(updater: (config: AppConfig) => AppConfig) {
     if (!config) return;
     await saveConfig(updater(config));
+  }
+
+  async function updateScheduleUserConfig(userId: string, updater: (user: UserConfig) => UserConfig) {
+    if (!config) return;
+    const user = config.users.find((item) => item.id === userId);
+    if (!user) return;
+    const updatedUser = updater(user);
+    const nextUsers = config.users.map((item) => item.id === userId ? updatedUser : item);
+    await saveConfig({ ...config, users: nextUsers });
   }
 
   async function updateScheduleDailyValue(key: "time" | "delayMs", value: string) {
@@ -564,6 +576,17 @@ function App() {
                 void updateScheduleExchangeValue("maxAttempts", value);
               } else if (prompt.key === "scheduleExchangeRequestTimeoutMs") {
                 void updateScheduleExchangeValue("requestTimeoutMs", value);
+              } else if (prompt.key === "userScheduleExchangeId") {
+                void updateScheduleUserConfig(selectedScheduleUserId, (user) => ({
+                  ...user,
+                  schedule: {
+                    ...(user.schedule ?? {}),
+                    exchange: {
+                      ...(user.schedule?.exchange ?? {}),
+                      exchangeId: value
+                    }
+                  }
+                }));
               } else {
                 updateField(prompt.key, value);
               }
@@ -594,7 +617,9 @@ function App() {
       {screen === "amount" && <ExchangeAmount initialIndex={initialIndex("amount", Math.max(0, EXCHANGE_AMOUNT_OPTIONS.findIndex((option) => option.id === config.exchange.exchangeId)))} onHighlight={(index) => setActiveIndex("amount", index)} exchangeId={config.exchange.exchangeId} updateExchangeConfig={(value) => void updateExchangeConfig("exchangeId", value)} navigateBack={navigateBack} />}
       {screen === "startTime" && <ExchangeStartTime initialIndex={initialIndex("startTime", Math.max(0, EXCHANGE_START_TIME_OPTIONS.findIndex((option) => normalizeTimeToSecond(option.value) === normalizeTimeToSecond(config.exchange.startAt))))} onHighlight={(index) => setActiveIndex("startTime", index)} startAt={config.exchange.startAt} updateExchangeConfig={(value) => void updateExchangeConfig("startAt", value)} navigateBack={navigateBack} />}
       {screen === "schedule" && <ScheduleSettings initialIndex={initialIndex("schedule")} onHighlight={(index) => setActiveIndex("schedule", index)} config={config} setPrompt={openPrompt} navigate={navigate} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} startScheduleRunner={() => void startScheduleRunner()} runPm2Task={(label, task) => void runPm2Task(label, task)} navigateBack={navigateBack} />}
-      {screen === "scheduleUsers" && <ScheduleUsers initialIndex={initialIndex("scheduleUsers")} onHighlight={(index) => setActiveIndex("scheduleUsers", index)} config={config} toggleUser={toggleScheduleUser} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} navigateBack={navigateBack} />}
+      {screen === "scheduleUsers" && <ScheduleUsers initialIndex={initialIndex("scheduleUsers")} onHighlight={(index) => setActiveIndex("scheduleUsers", index)} config={config} toggleUser={toggleScheduleUser} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} navigate={navigate} navigateBack={navigateBack} />}
+      {screen === "scheduleUserList" && <ScheduleUserList initialIndex={initialIndex("scheduleUserList")} onHighlight={(index) => setActiveIndex("scheduleUserList", index)} config={config} selectUser={(userId) => { setSelectedScheduleUserId(userId); navigate("scheduleUserSettings"); }} navigateBack={navigateBack} />}
+      {screen === "scheduleUserSettings" && <ScheduleUserSettings initialIndex={initialIndex("scheduleUserSettings")} onHighlight={(index) => setActiveIndex("scheduleUserSettings", index)} config={config} userId={selectedScheduleUserId} setPrompt={openPrompt} updateScheduleUserConfig={(updater) => void updateScheduleUserConfig(selectedScheduleUserId, updater)} navigateBack={navigateBack} />}
       {screen === "scheduleDaily" && <ScheduleDailySettings initialIndex={initialIndex("scheduleDaily")} onHighlight={(index) => setActiveIndex("scheduleDaily", index)} config={config} setPrompt={openPrompt} navigate={navigate} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} navigateBack={navigateBack} />}
       {screen === "scheduleDailyTime" && <ScheduleDailyTime initialIndex={initialIndex("scheduleDailyTime")} onHighlight={(index) => setActiveIndex("scheduleDailyTime", index)} time={config.schedule.daily.time} setPrompt={openPrompt} navigateBack={navigateBack} />}
       {screen === "scheduleDailyRangeStart" && <ScheduleHourSelect initialIndex={initialIndex("scheduleDailyRangeStart", config.schedule.daily.rangeStartHour)} onHighlight={(index) => setActiveIndex("scheduleDailyRangeStart", index)} title="开始小时" currentHour={config.schedule.daily.rangeStartHour} updateHour={(value) => void updateScheduleDailyHour("rangeStartHour", value)} navigateBack={navigateBack} />}
@@ -889,16 +914,76 @@ function ScheduleExchangeSettings({ initialIndex, onHighlight, config, setPrompt
   }} />;
 }
 
-function ScheduleUsers({ initialIndex, onHighlight, config, toggleUser, updateScheduleConfig, navigateBack }: MenuNavProps & { config: AppConfig; toggleUser: (userId: string) => void; updateScheduleConfig: (updater: (config: AppConfig) => AppConfig) => void; navigateBack: () => void }) {
+function ScheduleUsers({ initialIndex, onHighlight, config, toggleUser, updateScheduleConfig, navigate, navigateBack }: MenuNavProps & { config: AppConfig; toggleUser: (userId: string) => void; updateScheduleConfig: (updater: (config: AppConfig) => AppConfig) => void; navigate: (screen: Screen) => void; navigateBack: () => void }) {
   const selected = new Set(config.schedule.users);
   const items = config.users.length ? config.users.map((user) => ({
     label: `${selected.has(user.id) ? "[x]" : "[ ]"} ${redactText(user.id)}${user.name ? ` / ${redactText(user.name)}` : ""}`,
     value: user.id
   })) : [{ label: "暂无用户，请先登录", value: "__none" }];
-  return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[{ label: config.schedule.users.length ? "切换为全部用户" : "当前为全部用户", value: "__all" }, ...items, { label: "返回", value: "back" }]} onSelect={(item) => {
+  return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[{ label: config.schedule.users.length ? "切换为全部用户" : "当前为全部用户", value: "__all" }, { label: "按用户设置定时任务", value: "__perUser" }, ...items, { label: "返回", value: "back" }]} onSelect={(item) => {
     if (item.value === "back") navigateBack();
     else if (item.value === "__all") updateScheduleConfig((old) => ({ ...old, schedule: { ...old.schedule, users: [] } }));
+    else if (item.value === "__perUser") navigate("scheduleUserList");
     else if (item.value !== "__none") toggleUser(item.value);
+  }} />;
+}
+
+function ScheduleUserList({ initialIndex, onHighlight, config, selectUser, navigateBack }: MenuNavProps & { config: AppConfig; selectUser: (userId: string) => void; navigateBack: () => void }) {
+  const items = config.users.length ? config.users.map((user) => {
+    const dailyEnabled = user.schedule?.daily?.enabled;
+    const exchangeEnabled = user.schedule?.exchange?.enabled;
+    const hasOverride = dailyEnabled !== undefined || exchangeEnabled !== undefined;
+    const status = hasOverride
+      ? `[日${dailyEnabled === true ? "开" : dailyEnabled === false ? "关" : "承"} 兑${exchangeEnabled === true ? "开" : exchangeEnabled === false ? "关" : "承"}]`
+      : "[继承全局]";
+    return {
+      label: `${status} ${redactText(user.id)}${user.name ? ` / ${redactText(user.name)}` : ""}`,
+      value: user.id
+    };
+  }) : [{ label: "暂无用户，请先登录", value: "__none" }];
+  return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[...items, { label: "返回", value: "back" }]} onSelect={(item) => {
+    if (item.value === "back") navigateBack();
+    else if (item.value !== "__none") selectUser(item.value);
+  }} />;
+}
+
+function ScheduleUserSettings({ initialIndex, onHighlight, config, userId, setPrompt, updateScheduleUserConfig, navigateBack }: MenuNavProps & { config: AppConfig; userId: string; setPrompt: ScreenProps["setPrompt"]; updateScheduleUserConfig: (updater: (user: UserConfig) => UserConfig) => void; navigateBack: () => void }) {
+  const user = config.users.find((item) => item.id === userId);
+  if (!user) return <Text color="red">用户不存在</Text>;
+  const dailyEnabled = user.schedule?.daily?.enabled;
+  const exchangeEnabled = user.schedule?.exchange?.enabled;
+  const exchangeId = user.schedule?.exchange?.exchangeId;
+  const globalDailyEnabled = config.schedule.daily.enabled;
+  const globalExchangeEnabled = config.schedule.exchange.enabled;
+  const globalExchangeId = config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
+  const dailyLabel = dailyEnabled === undefined ? `继承全局 (${globalDailyEnabled ? "已启用" : "未启用"})` : dailyEnabled ? "已启用" : "已禁用";
+  const exchangeLabel = exchangeEnabled === undefined ? `继承全局 (${globalExchangeEnabled ? "已启用" : "未启用"})` : exchangeEnabled ? "已启用" : "已禁用";
+  const exchangeIdLabel = exchangeId === undefined ? `继承全局 (${globalExchangeId}元)` : `${exchangeId}元`;
+  return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[
+    { label: `用户: ${redactText(user.id)}${user.name ? ` / ${redactText(user.name)}` : ""}`, value: "__header" },
+    { label: `每日任务: ${dailyLabel}`, value: "daily" },
+    { label: `优惠券兑换: ${exchangeLabel}`, value: "exchange" },
+    { label: `兑换面额: ${exchangeIdLabel}`, value: "exchangeId" },
+    { label: "重置为全局默认", value: "reset" },
+    { label: "返回", value: "back" }
+  ]} onSelect={(item) => {
+    if (item.value === "back") navigateBack();
+    else if (item.value === "__header") return;
+    else if (item.value === "daily") updateScheduleUserConfig((u) => {
+      const current = u.schedule?.daily?.enabled;
+      const next = current === undefined ? !globalDailyEnabled : !current;
+      return { ...u, schedule: { ...(u.schedule ?? {}), daily: { ...(u.schedule?.daily ?? {}), enabled: next } } };
+    });
+    else if (item.value === "exchange") updateScheduleUserConfig((u) => {
+      const current = u.schedule?.exchange?.enabled;
+      const next = current === undefined ? !globalExchangeEnabled : !current;
+      return { ...u, schedule: { ...(u.schedule ?? {}), exchange: { ...(u.schedule?.exchange ?? {}), enabled: next } } };
+    });
+    else if (item.value === "exchangeId") setPrompt({ key: "userScheduleExchangeId", label: "用户兑换面额 (10/20/30/50)", initialValue: exchangeId ?? globalExchangeId });
+    else if (item.value === "reset") updateScheduleUserConfig((u) => {
+      const { schedule, ...rest } = u;
+      return rest as UserConfig;
+    });
   }} />;
 }
 
