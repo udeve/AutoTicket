@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AppConfigSchema, findUser } from "../src/core/config/config.schema.js";
+import { AppConfigSchema, findUser, isUserDailyEnabled, isUserExchangeEnabled, getUserExchangeId, resolveUsersForTask } from "../src/core/config/config.schema.js";
 import { ConfigRepository } from "../src/core/config/config.repository.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -119,5 +119,118 @@ describe("config schema", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("user-level schedule config", () => {
+    it("parses user schedule config", () => {
+      const config = AppConfigSchema.parse({
+        users: [
+          { id: "u1", loginName: "login", sesId: "session", schedule: { daily: { enabled: true }, exchange: { enabled: false, exchangeId: "20" } } }
+        ]
+      });
+      expect(config.users[0].schedule?.daily?.enabled).toBe(true);
+      expect(config.users[0].schedule?.exchange?.enabled).toBe(false);
+      expect(config.users[0].schedule?.exchange?.exchangeId).toBe("20");
+    });
+
+    it("isUserDailyEnabled falls back to global", () => {
+      const config = AppConfigSchema.parse({
+        users: [{ id: "u1", loginName: "login", sesId: "session" }],
+        schedule: { daily: { enabled: true } }
+      });
+      expect(isUserDailyEnabled(config, config.users[0])).toBe(true);
+    });
+
+    it("isUserDailyEnabled uses user-level override", () => {
+      const config = AppConfigSchema.parse({
+        users: [{ id: "u1", loginName: "login", sesId: "session", schedule: { daily: { enabled: false } } }],
+        schedule: { daily: { enabled: true } }
+      });
+      expect(isUserDailyEnabled(config, config.users[0])).toBe(false);
+    });
+
+    it("isUserExchangeEnabled falls back to global", () => {
+      const config = AppConfigSchema.parse({
+        users: [{ id: "u1", loginName: "login", sesId: "session" }],
+        schedule: { exchange: { enabled: true } }
+      });
+      expect(isUserExchangeEnabled(config, config.users[0])).toBe(true);
+    });
+
+    it("isUserExchangeEnabled uses user-level override", () => {
+      const config = AppConfigSchema.parse({
+        users: [{ id: "u1", loginName: "login", sesId: "session", schedule: { exchange: { enabled: false } } }],
+        schedule: { exchange: { enabled: true } }
+      });
+      expect(isUserExchangeEnabled(config, config.users[0])).toBe(false);
+    });
+
+    it("getUserExchangeId priority: user > schedule.exchange > exchange", () => {
+      const config = AppConfigSchema.parse({
+        exchange: { exchangeId: "10" },
+        schedule: { exchange: { exchangeId: "15" } },
+        users: [{ id: "u1", loginName: "login", sesId: "session", schedule: { exchange: { exchangeId: "20" } } }]
+      });
+      expect(getUserExchangeId(config, config.users[0])).toBe("20");
+    });
+
+    it("getUserExchangeId falls back to schedule.exchange", () => {
+      const config = AppConfigSchema.parse({
+        exchange: { exchangeId: "10" },
+        schedule: { exchange: { exchangeId: "15" } },
+        users: [{ id: "u1", loginName: "login", sesId: "session" }]
+      });
+      expect(getUserExchangeId(config, config.users[0])).toBe("15");
+    });
+
+    it("getUserExchangeId falls back to exchange global", () => {
+      const config = AppConfigSchema.parse({
+        exchange: { exchangeId: "10" },
+        users: [{ id: "u1", loginName: "login", sesId: "session" }]
+      });
+      expect(getUserExchangeId(config, config.users[0])).toBe("10");
+    });
+
+    it("resolveUsersForTask filters by daily enabled", () => {
+      const config = AppConfigSchema.parse({
+        users: [
+          { id: "u1", loginName: "login1", sesId: "s1", schedule: { daily: { enabled: true } } },
+          { id: "u2", loginName: "login2", sesId: "s2", schedule: { daily: { enabled: false } } },
+          { id: "u3", loginName: "login3", sesId: "s3" }
+        ],
+        schedule: { daily: { enabled: true } }
+      });
+      const dailyUsers = resolveUsersForTask(config, "daily");
+      expect(dailyUsers.map((u) => u.id)).toEqual(["u1", "u3"]);
+    });
+
+    it("resolveUsersForTask filters by exchange enabled", () => {
+      const config = AppConfigSchema.parse({
+        users: [
+          { id: "u1", loginName: "login1", sesId: "s1", schedule: { exchange: { enabled: true } } },
+          { id: "u2", loginName: "login2", sesId: "s2", schedule: { exchange: { enabled: false } } },
+          { id: "u3", loginName: "login3", sesId: "s3" }
+        ],
+        schedule: { exchange: { enabled: false } }
+      });
+      const exchangeUsers = resolveUsersForTask(config, "exchange");
+      expect(exchangeUsers.map((u) => u.id)).toEqual(["u1"]);
+    });
+
+    it("resolveUsersForTask respects schedule.users list", () => {
+      const config = AppConfigSchema.parse({
+        users: [
+          { id: "u1", loginName: "login1", sesId: "s1" },
+          { id: "u2", loginName: "login2", sesId: "s2" },
+          { id: "u3", loginName: "login3", sesId: "s3" }
+        ],
+        schedule: {
+          users: ["u1", "u3"],
+          daily: { enabled: true }
+        }
+      });
+      const dailyUsers = resolveUsersForTask(config, "daily");
+      expect(dailyUsers.map((u) => u.id)).toEqual(["u1", "u3"]);
+    });
   });
 });

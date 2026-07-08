@@ -14,12 +14,27 @@ export const ExchangeStopRuleSchema = z.object({
   status: z.enum(["success", "failure"])
 });
 
+export const UserDailyScheduleConfigSchema = z.object({
+  enabled: z.boolean().optional()
+});
+
+export const UserExchangeScheduleConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  exchangeId: z.string().optional()
+});
+
+export const UserScheduleConfigSchema = z.object({
+  daily: UserDailyScheduleConfigSchema.optional(),
+  exchange: UserExchangeScheduleConfigSchema.optional()
+});
+
 export const UserConfigSchema = z.object({
   id: z.string().min(1),
   loginName: z.string().min(1),
   userId: z.string().optional(),
   sesId: z.string().min(1),
-  name: z.string().optional()
+  name: z.string().optional(),
+  schedule: UserScheduleConfigSchema.optional()
 });
 
 export const DingTalkConfigSchema = z.object({
@@ -171,6 +186,9 @@ export type { BotConfig } from "../bot/bot.schema.js";
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 export type UserConfig = z.infer<typeof UserConfigSchema>;
 export type ScheduleConfig = z.infer<typeof ScheduleConfigSchema>;
+export type UserScheduleConfig = z.infer<typeof UserScheduleConfigSchema>;
+export type UserDailyScheduleConfig = z.infer<typeof UserDailyScheduleConfigSchema>;
+export type UserExchangeScheduleConfig = z.infer<typeof UserExchangeScheduleConfigSchema>;
 
 export function findUser(config: AppConfig, userId: string): UserConfig {
   const user = config.users.find((item) => item.id === userId);
@@ -178,4 +196,27 @@ export function findUser(config: AppConfig, userId: string): UserConfig {
     throw new Error(`User not found in config: ${userId}`);
   }
   return user;
+}
+
+export function isUserDailyEnabled(config: AppConfig, user: UserConfig): boolean {
+  return user.schedule?.daily?.enabled ?? config.schedule.daily.enabled;
+}
+
+export function isUserExchangeEnabled(config: AppConfig, user: UserConfig): boolean {
+  return user.schedule?.exchange?.enabled ?? config.schedule.exchange.enabled;
+}
+
+export function getUserExchangeId(config: AppConfig, user: UserConfig): string {
+  return user.schedule?.exchange?.exchangeId ?? config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
+}
+
+export function resolveUsersForTask(config: AppConfig, task: "daily" | "exchange"): UserConfig[] {
+  const configured = config.schedule.users;
+  const allUsers = configured.length
+    ? config.users.filter((user) => configured.includes(user.id))
+    : config.users;
+  if (task === "daily") {
+    return allUsers.filter((user) => isUserDailyEnabled(config, user));
+  }
+  return allUsers.filter((user) => isUserExchangeEnabled(config, user));
 }

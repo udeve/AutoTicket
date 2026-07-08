@@ -1,5 +1,6 @@
 import { randomInt } from "node:crypto";
 import type { AppConfig, UserConfig } from "../config/config.schema.js";
+import { getUserExchangeId, isUserDailyEnabled, isUserExchangeEnabled, resolveUsersForTask } from "../config/config.schema.js";
 import { ApiClient } from "../http/api-client.js";
 import { createNotifier } from "../notifier/app.notifier.js";
 import type { Notifier } from "../notifier/notifier.js";
@@ -39,7 +40,7 @@ export class ScheduleService {
   }
 
   async runOnce(task: ScheduledTaskType, force = false): Promise<void> {
-    const users = this.resolveUsers();
+    const users = resolveUsersForTask(this.options.config, task);
     if (!users.length) {
       this.logger("没有可执行用户。");
       return;
@@ -81,7 +82,7 @@ export class ScheduleService {
 
   async previewDailyPlan(date = tomorrowKey()): Promise<DailySchedulePlanItem[]> {
     const daily = this.options.config.schedule.daily;
-    const users = this.resolveUsers();
+    const users = resolveUsersForTask(this.options.config, "daily");
     if (daily.mode === "fixed") {
       const time = normalizeTimeText(daily.time);
       return users.map((user) => ({ userId: user.id, date, time, mode: "fixed" }));
@@ -96,7 +97,7 @@ export class ScheduleService {
   }
 
   private async runExchangeScheduleAt(startAt: string): Promise<void> {
-    const users = this.resolveUsers();
+    const users = resolveUsersForTask(this.options.config, "exchange");
     await Promise.all(users.map(async (user) => {
       const latest = await this.options.stateRepo.latestFor(user.id, "exchange", todayKey());
       if (this.options.config.schedule.exchange.stopAfterSuccess && latest?.status === "success") {
@@ -108,7 +109,7 @@ export class ScheduleService {
   }
 
   private async runDailyScheduleForAllUsers(force: boolean): Promise<void> {
-    for (const user of this.resolveUsers()) {
+    for (const user of resolveUsersForTask(this.options.config, "daily")) {
       await this.runDailyForUserSafely(user, force);
     }
   }
@@ -182,7 +183,7 @@ export class ScheduleService {
     }
 
     const exchangeMeta = {
-      exchangeId: this.options.config.schedule.exchange.exchangeId ?? this.options.config.exchange.exchangeId,
+      exchangeId: getUserExchangeId(this.options.config, user),
       startAt: startAt ?? this.options.config.exchange.startAt,
       concurrency: this.options.config.schedule.exchange.concurrency ?? this.options.config.exchange.concurrency,
       intervalMs: this.options.config.schedule.exchange.intervalMs ?? this.options.config.exchange.intervalMs,
@@ -231,7 +232,7 @@ export class ScheduleService {
     }
   }
 
-  private resolveUsers(): UserConfig[] {
+  private resolveAllUsers(): UserConfig[] {
     const configured = this.options.config.schedule.users;
     if (!configured.length) return this.options.config.users;
     const selected = new Set(configured);
@@ -254,24 +255,25 @@ export class ScheduleService {
 
   private async nextDailyCandidates(now = new Date()): Promise<Array<Extract<ScheduleCandidate, { task: "daily" }>>> {
     const daily = this.options.config.schedule.daily;
+    const allUsers = this.resolveAllUsers();
+    const enabledUsers = allUsers.filter((user) => isUserDailyEnabled(this.options.config, user));
     if (daily.mode === "fixed") {
       const time = nextOccurrence(daily.time, now);
-      return [{ task: "daily", time, timeText: formatTimeText(time) }];
+      return enabledUsers.length > 0 ? [{ task: "daily", time, timeText: formatTimeText(time) }] : [];
     }
     const candidates: Array<Extract<ScheduleCandidate, { task: "daily" }>> = [];
-    const users = this.resolveUsers();
-    const shardIndexes = randomShardIndexes(users);
-    for (const user of users) {
+    const shardIndexes = randomShardIndexes(enabledUsers);
+    for (const user of enabledUsers) {
       const existingRun = await this.options.stateRepo.hasRunToday(user.id, "daily");
       const shardIndex = shardIndexes.get(user.id) ?? 0;
-      const time = existingRun ? await this.dailyRandomTimeForDate(user.id, tomorrowKey(now), now, shardIndex, users.length) : await this.nextDailyTimeForUser(user, now, shardIndex, users.length);
+      const time = existingRun ? await this.dailyRandomTimeForDate(user.id, tomorrowKey(now), now, shardIndex, enabledUsers.length) : await this.nextDailyTimeForUser(user, now, shardIndex, enabledUsers.length);
       candidates.push({ task: "daily", time, timeText: formatTimeText(time), user });
     }
     return candidates;
   }
 
   private async nextDailyTimeForUser(user: UserConfig, now = new Date(), userIndex?: number, userCount?: number): Promise<Date> {
-    const users = userCount === undefined ? this.resolveUsers() : undefined;
+    const users = userCount === undefined ? resolveUsersForTask(this.options.config, "daily") : undefined;
     const index = userIndex ?? Math.max(0, users?.findIndex((item) => item.id === user.id) ?? 0);
     const count = userCount ?? Math.max(1, users?.length ?? 1);
     const today = await this.dailyRandomTimeForDate(user.id, todayKey(now), now, index, count);
@@ -282,7 +284,7 @@ export class ScheduleService {
   }
 
   private async dailyRandomTimeForDate(userId: string, dateKey: string, base: Date, userIndex?: number, userCount?: number): Promise<Date> {
-    const users = this.resolveUsers();
+    const users = resolveUsersForTask(this.options.config, "daily");
     const index = userIndex ?? Math.max(0, users.findIndex((item) => item.id === userId));
     const count = userCount ?? Math.max(1, users.length);
     const time = await this.getOrCreateDailyRandomTime(userId, dateKey, index, count);

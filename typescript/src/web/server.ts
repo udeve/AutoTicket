@@ -60,6 +60,60 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
     return;
   }
 
+  if (url.pathname === "/api/user/schedule" && req.method === "GET") {
+    const userId = url.searchParams.get("userId") ?? "";
+    const config = await repo.load();
+    const user = await repo.getUser(userId);
+    const dailyEnabled = user.schedule?.daily?.enabled ?? config.schedule.daily.enabled;
+    const exchangeEnabled = user.schedule?.exchange?.enabled ?? config.schedule.exchange.enabled;
+    const exchangeId = user.schedule?.exchange?.exchangeId ?? config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
+    sendJson(res, 200, {
+      user: redactUserForDisplay(user),
+      schedule: {
+        daily: {
+          enabled: dailyEnabled,
+          source: user.schedule?.daily?.enabled !== undefined ? "user" : "global"
+        },
+        exchange: {
+          enabled: exchangeEnabled,
+          exchangeId,
+          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined ? "user" : "global"
+        }
+      }
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/user/schedule" && req.method === "PUT") {
+    const body = await readJson(req);
+    const userId = stringField(body, "userId");
+    const config = await repo.load();
+    const user = await repo.getUser(userId);
+    const updatedSchedule = { ...(user.schedule ?? {}) };
+    if (body.dailyEnabled !== undefined) {
+      updatedSchedule.daily = {
+        ...(updatedSchedule.daily ?? {}),
+        enabled: booleanField(body, "dailyEnabled", false)
+      };
+    }
+    if (body.exchangeEnabled !== undefined) {
+      updatedSchedule.exchange = {
+        ...(updatedSchedule.exchange ?? {}),
+        enabled: booleanField(body, "exchangeEnabled", false)
+      };
+    }
+    if (body.exchangeId !== undefined) {
+      updatedSchedule.exchange = {
+        ...(updatedSchedule.exchange ?? {}),
+        exchangeId: stringField(body, "exchangeId")
+      };
+    }
+    const updatedUser = { ...user, schedule: updatedSchedule };
+    await repo.upsertUser(updatedUser);
+    sendJson(res, 200, { success: true, message: "用户定时任务配置已更新" });
+    return;
+  }
+
   if (url.pathname === "/api/state" && req.method === "GET") {
     const state = await new TaskStateRepository(statePathForConfig(repo.path)).load();
     const date = url.searchParams.get("date") ?? todayKey();
@@ -185,12 +239,13 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
     }
     const startedAt = new Date().toISOString();
     const requestTimeoutMs = numberField(body, "requestTimeoutMs", config.exchange.requestTimeoutMs);
+    const userExchangeId = user.schedule?.exchange?.exchangeId ?? config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
     await withClient(res, async (client) => {
       try {
         await client.warmup();
         const scheduler = new ExchangeScheduler(new ExchangeService(client));
         const exchangeMeta = {
-          exchangeId: stringField(body, "exchangeId", config.exchange.exchangeId),
+          exchangeId: stringField(body, "exchangeId", userExchangeId),
           startAt: optionalStringField(body, "startAt") ?? config.exchange.startAt,
           concurrency: numberField(body, "concurrency", config.exchange.concurrency),
           intervalMs: numberField(body, "intervalMs", config.exchange.intervalMs),

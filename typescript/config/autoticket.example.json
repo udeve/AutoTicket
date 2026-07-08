@@ -5,7 +5,30 @@
       "loginName": "填入登录后的 login_name",
       "userId": "可选，默认等于 loginName",
       "sesId": "填入登录后的 ses_id",
-      "name": "可选备注"
+      "name": "可选备注",
+      "schedule": {
+        "daily": {
+          "enabled": true
+        },
+        "exchange": {
+          "enabled": true,
+          "exchangeId": "10"
+        }
+      }
+    },
+    {
+      "id": "user2",
+      "loginName": "填入登录后的 login_name",
+      "sesId": "填入登录后的 ses_id",
+      "name": "仅每日任务的用户",
+      "schedule": {
+        "daily": {
+          "enabled": true
+        },
+        "exchange": {
+          "enabled": false
+        }
+      }
     }
   ],
   "exchange": {

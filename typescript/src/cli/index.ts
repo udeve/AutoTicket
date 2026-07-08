@@ -50,6 +50,106 @@ userCommand
     }
   });
 
+const userScheduleCommand = userCommand.command("schedule").description("User-level schedule settings");
+
+userScheduleCommand
+  .command("show")
+  .description("Show user-level schedule configuration")
+  .option("-c, --config <path>", "config file path", DEFAULT_CONFIG_PATH)
+  .requiredOption("-u, --user <id>", "user id in config")
+  .action(async (options) => {
+    const repo = new ConfigRepository(options.config);
+    const config = await repo.load();
+    const user = await repo.getUser(options.user);
+    const dailyEnabled = user.schedule?.daily?.enabled ?? config.schedule.daily.enabled;
+    const exchangeEnabled = user.schedule?.exchange?.enabled ?? config.schedule.exchange.enabled;
+    const exchangeId = user.schedule?.exchange?.exchangeId ?? config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
+    console.log(JSON.stringify({
+      user: redactUserForDisplay(user),
+      schedule: {
+        daily: {
+          enabled: dailyEnabled,
+          source: user.schedule?.daily?.enabled !== undefined ? "user" : "global"
+        },
+        exchange: {
+          enabled: exchangeEnabled,
+          exchangeId,
+          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined ? "user" : "global"
+        }
+      }
+    }, null, 2));
+  });
+
+userScheduleCommand
+  .command("set")
+  .description("Set user-level schedule configuration")
+  .option("-c, --config <path>", "config file path", DEFAULT_CONFIG_PATH)
+  .requiredOption("-u, --user <id>", "user id in config")
+  .option("--daily-enabled <boolean>", "enable/disable daily task (true/false)")
+  .option("--exchange-enabled <boolean>", "enable/disable exchange task (true/false)")
+  .option("--exchange-id <id>", "exchange coupon id")
+  .action(async (options) => {
+    const repo = new ConfigRepository(options.config);
+    const config = await repo.load();
+    const user = await repo.getUser(options.user);
+    const updatedSchedule = { ...(user.schedule ?? {}) };
+    if (options.dailyEnabled !== undefined) {
+      updatedSchedule.daily = {
+        ...(updatedSchedule.daily ?? {}),
+        enabled: parseBoolean(options.dailyEnabled)
+      };
+    }
+    if (options.exchangeEnabled !== undefined) {
+      updatedSchedule.exchange = {
+        ...(updatedSchedule.exchange ?? {}),
+        enabled: parseBoolean(options.exchangeEnabled)
+      };
+    }
+    if (options.exchangeId !== undefined) {
+      updatedSchedule.exchange = {
+        ...(updatedSchedule.exchange ?? {}),
+        exchangeId: options.exchangeId
+      };
+    }
+    const updatedUser = { ...user, schedule: updatedSchedule };
+    await repo.upsertUser(updatedUser);
+    console.log(`用户 ${options.user} 的定时任务配置已更新。`);
+  });
+
+userScheduleCommand
+  .command("reset")
+  .description("Reset user-level schedule configuration (use global defaults)")
+  .option("-c, --config <path>", "config file path", DEFAULT_CONFIG_PATH)
+  .requiredOption("-u, --user <id>", "user id in config")
+  .option("--daily", "reset daily task settings only")
+  .option("--exchange", "reset exchange task settings only")
+  .action(async (options) => {
+    const repo = new ConfigRepository(options.config);
+    const user = await repo.getUser(options.user);
+    if (!user.schedule) {
+      console.log(`用户 ${options.user} 没有自定义定时任务配置，无需重置。`);
+      return;
+    }
+    const updatedSchedule = { ...user.schedule };
+    if (options.daily) {
+      delete updatedSchedule.daily;
+    }
+    if (options.exchange) {
+      delete updatedSchedule.exchange;
+    }
+    if (!options.daily && !options.exchange) {
+      delete updatedSchedule.daily;
+      delete updatedSchedule.exchange;
+    }
+    const hasAny = Object.keys(updatedSchedule).length > 0;
+    const updatedUser = hasAny ? { ...user, schedule: updatedSchedule } : { ...user };
+    if (!hasAny) {
+      delete (updatedUser as { schedule?: unknown }).schedule;
+    }
+    await repo.upsertUser(updatedUser);
+    console.log(`用户 ${options.user} 的定时任务配置已重置为全局默认。`);
+  });
+
 program
   .command("state")
   .description("Show saved task execution state")
@@ -475,4 +575,12 @@ async function saveLoginResult(configPath: string, userId: string, data: LoginRe
     name: data.name
   });
   console.log(`登录信息已保存到 ${configPath}，用户 ID: ${userId}`);
+}
+
+function parseBoolean(value: string | boolean): boolean {
+  if (typeof value === "boolean") return value;
+  const lower = value.toLowerCase().trim();
+  if (lower === "true" || lower === "1" || lower === "yes") return true;
+  if (lower === "false" || lower === "0" || lower === "no") return false;
+  throw new Error(`Invalid boolean value: ${value}`);
 }
