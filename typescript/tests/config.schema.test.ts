@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AppConfigSchema, findUser, isUserDailyEnabled, isUserExchangeEnabled, getUserExchangeId, resolveUsersForTask } from "../src/core/config/config.schema.js";
+import { AppConfigSchema, findUser, isUserDailyEnabled, isUserExchangeEnabled, getUserExchangeId, getUserExchangeWeekdays, isExchangeWeekday, formatWeekdays, resolveUsersForTask } from "../src/core/config/config.schema.js";
 import { ConfigRepository } from "../src/core/config/config.repository.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -215,6 +215,52 @@ describe("config schema", () => {
       });
       const exchangeUsers = resolveUsersForTask(config, "exchange");
       expect(exchangeUsers.map((u) => u.id)).toEqual(["u1"]);
+    });
+
+    it("getUserExchangeWeekdays falls back to global", () => {
+      const config = AppConfigSchema.parse({
+        users: [{ id: "u1", loginName: "login", sesId: "session" }],
+        schedule: { exchange: { weekdays: [1, 2, 3] } }
+      });
+      expect(getUserExchangeWeekdays(config, config.users[0])).toEqual([1, 2, 3]);
+    });
+
+    it("getUserExchangeWeekdays uses user-level override", () => {
+      const config = AppConfigSchema.parse({
+        users: [{ id: "u1", loginName: "login", sesId: "session", schedule: { exchange: { weekdays: [4, 5] } } }],
+        schedule: { exchange: { weekdays: [1, 2, 3] } }
+      });
+      expect(getUserExchangeWeekdays(config, config.users[0])).toEqual([4, 5]);
+    });
+
+    it("isExchangeWeekday returns true for matching weekday", () => {
+      const config = AppConfigSchema.parse({
+        users: [{ id: "u1", loginName: "login", sesId: "session" }],
+        schedule: { exchange: { weekdays: [1, 3, 5] } }
+      });
+      const monday = new Date(2024, 0, 1);
+      expect(isExchangeWeekday(config, config.users[0], monday)).toBe(true);
+    });
+
+    it("isExchangeWeekday returns false for non-matching weekday", () => {
+      const config = AppConfigSchema.parse({
+        users: [{ id: "u1", loginName: "login", sesId: "session" }],
+        schedule: { exchange: { weekdays: [1, 3, 5] } }
+      });
+      const sunday = new Date(2023, 11, 31);
+      expect(isExchangeWeekday(config, config.users[0], sunday)).toBe(false);
+    });
+
+    it("formatWeekdays handles all days", () => {
+      expect(formatWeekdays([0, 1, 2, 3, 4, 5, 6])).toBe("每天");
+    });
+
+    it("formatWeekdays handles empty", () => {
+      expect(formatWeekdays([])).toBe("不执行");
+    });
+
+    it("formatWeekdays formats specific days", () => {
+      expect(formatWeekdays([1, 3, 5])).toBe("周一、周三、周五");
     });
 
     it("resolveUsersForTask respects schedule.users list", () => {

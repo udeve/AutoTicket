@@ -67,6 +67,7 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
     const dailyEnabled = user.schedule?.daily?.enabled ?? config.schedule.daily.enabled;
     const exchangeEnabled = user.schedule?.exchange?.enabled ?? config.schedule.exchange.enabled;
     const exchangeId = user.schedule?.exchange?.exchangeId ?? config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
+    const weekdays = user.schedule?.exchange?.weekdays ?? config.schedule.exchange.weekdays;
     sendJson(res, 200, {
       user: redactUserForDisplay(user),
       schedule: {
@@ -77,7 +78,8 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
         exchange: {
           enabled: exchangeEnabled,
           exchangeId,
-          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined ? "user" : "global"
+          weekdays,
+          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined || user.schedule?.exchange?.weekdays !== undefined ? "user" : "global"
         }
       }
     });
@@ -106,6 +108,15 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
       updatedSchedule.exchange = {
         ...(updatedSchedule.exchange ?? {}),
         exchangeId: stringField(body, "exchangeId")
+      };
+    }
+    if (body.weekdays !== undefined) {
+      const weekdays = Array.isArray(body.weekdays)
+        ? body.weekdays.map((n: unknown) => Number(n)).filter((n: number) => !isNaN(n) && n >= 0 && n <= 6)
+        : [];
+      updatedSchedule.exchange = {
+        ...(updatedSchedule.exchange ?? {}),
+        weekdays
       };
     }
     const updatedUser = { ...user, schedule: updatedSchedule };

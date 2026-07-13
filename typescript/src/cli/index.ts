@@ -64,6 +64,7 @@ userScheduleCommand
     const dailyEnabled = user.schedule?.daily?.enabled ?? config.schedule.daily.enabled;
     const exchangeEnabled = user.schedule?.exchange?.enabled ?? config.schedule.exchange.enabled;
     const exchangeId = user.schedule?.exchange?.exchangeId ?? config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
+    const weekdays = user.schedule?.exchange?.weekdays ?? config.schedule.exchange.weekdays;
     console.log(JSON.stringify({
       user: redactUserForDisplay(user),
       schedule: {
@@ -74,7 +75,8 @@ userScheduleCommand
         exchange: {
           enabled: exchangeEnabled,
           exchangeId,
-          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined ? "user" : "global"
+          weekdays,
+          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined || user.schedule?.exchange?.weekdays !== undefined ? "user" : "global"
         }
       }
     }, null, 2));
@@ -88,6 +90,7 @@ userScheduleCommand
   .option("--daily-enabled <boolean>", "enable/disable daily task (true/false)")
   .option("--exchange-enabled <boolean>", "enable/disable exchange task (true/false)")
   .option("--exchange-id <id>", "exchange coupon id")
+  .option("--weekdays <days>", "weekdays to run exchange, comma-separated (0=Sun,1=Mon,...,6=Sat), e.g. 1,3,5")
   .action(async (options) => {
     const repo = new ConfigRepository(options.config);
     const config = await repo.load();
@@ -109,6 +112,16 @@ userScheduleCommand
       updatedSchedule.exchange = {
         ...(updatedSchedule.exchange ?? {}),
         exchangeId: options.exchangeId
+      };
+    }
+    if (options.weekdays !== undefined) {
+      const weekdays = options.weekdays
+        .split(",")
+        .map((s: string) => parseInt(s.trim(), 10))
+        .filter((n: number) => !isNaN(n) && n >= 0 && n <= 6);
+      updatedSchedule.exchange = {
+        ...(updatedSchedule.exchange ?? {}),
+        weekdays
       };
     }
     const updatedUser = { ...user, schedule: updatedSchedule };

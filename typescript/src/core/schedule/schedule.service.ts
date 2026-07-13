@@ -1,6 +1,6 @@
 import { randomInt } from "node:crypto";
 import type { AppConfig, UserConfig } from "../config/config.schema.js";
-import { getUserExchangeId, isUserDailyEnabled, isUserExchangeEnabled, resolveUsersForTask } from "../config/config.schema.js";
+import { getUserExchangeId, isUserDailyEnabled, isUserExchangeEnabled, isExchangeWeekday, resolveUsersForTask } from "../config/config.schema.js";
 import { ApiClient } from "../http/api-client.js";
 import { createNotifier } from "../notifier/app.notifier.js";
 import type { Notifier } from "../notifier/notifier.js";
@@ -40,7 +40,7 @@ export class ScheduleService {
   }
 
   async runOnce(task: ScheduledTaskType, force = false): Promise<void> {
-    const users = resolveUsersForTask(this.options.config, task);
+    let users = resolveUsersForTask(this.options.config, task);
     if (!users.length) {
       this.logger("没有可执行用户。");
       return;
@@ -51,6 +51,15 @@ export class ScheduleService {
         await this.runDailyForUser(user, force);
       }
       return;
+    }
+
+    if (!force) {
+      const today = new Date();
+      users = users.filter((user) => isExchangeWeekday(this.options.config, user, today));
+      if (!users.length) {
+        this.logger("今日非兑换日，无用户可执行。");
+        return;
+      }
     }
 
     await Promise.all(users.map((user) => this.runExchangeForUser(user, undefined, force)));
@@ -97,7 +106,13 @@ export class ScheduleService {
   }
 
   private async runExchangeScheduleAt(startAt: string): Promise<void> {
-    const users = resolveUsersForTask(this.options.config, "exchange");
+    const allUsers = resolveUsersForTask(this.options.config, "exchange");
+    const today = new Date();
+    const users = allUsers.filter((user) => isExchangeWeekday(this.options.config, user, today));
+    if (users.length === 0) {
+      this.logger(`今日非兑换日，跳过场次 ${startAt}。`);
+      return;
+    }
     await Promise.all(users.map(async (user) => {
       const latest = await this.options.stateRepo.latestFor(user.id, "exchange", todayKey());
       if (this.options.config.schedule.exchange.stopAfterSuccess && latest?.status === "success") {
@@ -246,11 +261,29 @@ export class ScheduleService {
       candidates.push(...dailyCandidates);
     }
     if (this.options.config.schedule.exchange.enabled) {
-      for (const timeText of this.options.config.schedule.exchange.times) {
-        candidates.push({ task: "exchange", time: nextOccurrence(timeText), timeText });
+      const exchangeUsers = resolveUsersForTask(this.options.config, "exchange");
+      if (exchangeUsers.length > 0) {
+        for (const timeText of this.options.config.schedule.exchange.times) {
+          const nextTime = this.nextExchangeOccurrence(timeText, exchangeUsers);
+          if (nextTime) {
+            candidates.push({ task: "exchange", time: nextTime, timeText });
+          }
+        }
       }
     }
     return candidates.sort((a, b) => a.time.getTime() - b.time.getTime())[0];
+  }
+
+  private nextExchangeOccurrence(timeText: string, users: UserConfig[], now = new Date()): Date | undefined {
+    let candidate = nextOccurrence(timeText, now);
+    for (let i = 0; i < 14; i++) {
+      if (users.some((user) => isExchangeWeekday(this.options.config, user, candidate))) {
+        return candidate;
+      }
+      candidate = new Date(candidate);
+      candidate.setDate(candidate.getDate() + 1);
+    }
+    return undefined;
   }
 
   private async nextDailyCandidates(now = new Date()): Promise<Array<Extract<ScheduleCandidate, { task: "daily" }>>> {

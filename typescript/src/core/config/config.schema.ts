@@ -20,7 +20,8 @@ export const UserDailyScheduleConfigSchema = z.object({
 
 export const UserExchangeScheduleConfigSchema = z.object({
   enabled: z.boolean().optional(),
-  exchangeId: z.string().optional()
+  exchangeId: z.string().optional(),
+  weekdays: z.array(z.number().int().min(0).max(6)).optional()
 });
 
 export const UserScheduleConfigSchema = z.object({
@@ -90,6 +91,7 @@ export const ScheduleConfigSchema = z.object({
   exchange: z.object({
     enabled: z.boolean().default(false),
     times: z.array(z.string()).default(["07:00:00", "11:30:00", "17:00:00"]),
+    weekdays: z.array(z.number().int().min(0).max(6)).default([0, 1, 2, 3, 4, 5, 6]),
     exchangeId: z.string().optional(),
     concurrency: z.number().int().positive().default(1),
     intervalMs: z.number().int().nonnegative().default(100),
@@ -103,6 +105,7 @@ export const ScheduleConfigSchema = z.object({
   }).default({
     enabled: false,
     times: ["07:00:00", "11:30:00", "17:00:00"],
+    weekdays: [0, 1, 2, 3, 4, 5, 6],
     concurrency: 1,
     intervalMs: 100,
     maxAttempts: 50,
@@ -165,6 +168,7 @@ export const AppConfigSchema = z.object({
     exchange: {
       enabled: false,
       times: ["07:00:00", "11:30:00", "17:00:00"],
+      weekdays: [0, 1, 2, 3, 4, 5, 6],
       concurrency: 1,
       intervalMs: 100,
       maxAttempts: 50,
@@ -208,6 +212,24 @@ export function isUserExchangeEnabled(config: AppConfig, user: UserConfig): bool
 
 export function getUserExchangeId(config: AppConfig, user: UserConfig): string {
   return user.schedule?.exchange?.exchangeId ?? config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
+}
+
+export function getUserExchangeWeekdays(config: AppConfig, user: UserConfig): number[] {
+  return user.schedule?.exchange?.weekdays ?? config.schedule.exchange.weekdays;
+}
+
+export function isExchangeWeekday(config: AppConfig, user: UserConfig, date = new Date()): boolean {
+  const weekdays = getUserExchangeWeekdays(config, user);
+  return weekdays.includes(date.getDay());
+}
+
+export const WEEKDAY_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+export function formatWeekdays(weekdays: number[]): string {
+  if (weekdays.length === 7) return "每天";
+  if (weekdays.length === 0) return "不执行";
+  const sorted = [...weekdays].sort();
+  return sorted.map((d) => WEEKDAY_LABELS[d]).join("、");
 }
 
 export function resolveUsersForTask(config: AppConfig, task: "daily" | "exchange"): UserConfig[] {

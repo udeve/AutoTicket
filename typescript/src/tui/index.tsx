@@ -4,6 +4,7 @@ import { Box, Text, render, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { ConfigRepository, DEFAULT_CONFIG_PATH } from "../core/config/config.repository.js";
 import type { AppConfig, UserConfig } from "../core/config/config.schema.js";
+import { formatWeekdays, WEEKDAY_LABELS } from "../core/config/config.schema.js";
 import { ApiClient } from "../core/http/api-client.js";
 import { AuthService, type LoginResponse } from "../core/services/auth.service.js";
 import { formatDailyWorkflowSummary, summarizeDailyWorkflow, TaskService, type DailyWorkflowStepResult } from "../core/services/task.service.js";
@@ -22,7 +23,7 @@ import { InfoRow } from "./components/InfoRow.js";
 import { Menu } from "./components/Menu.js";
 import { TextPrompt } from "./components/TextPrompt.js";
 
-type Screen = "home" | "login" | "direct" | "sms" | "password" | "users" | "status" | "state" | "daily" | "exchange" | "confirmDaily" | "confirmExchange" | "settings" | "amount" | "startTime" | "schedule" | "scheduleUsers" | "scheduleUserList" | "scheduleUserSettings" | "scheduleUserExchangeAmount" | "scheduleDaily" | "scheduleDailyTime" | "scheduleDailyRangeStart" | "scheduleDailyRangeEnd" | "scheduleExchange" | "scheduleExchangeTimes" | "notifications" | "notificationProvider" | "web" | "summary" | "message";
+type Screen = "home" | "login" | "direct" | "sms" | "password" | "users" | "status" | "state" | "daily" | "exchange" | "confirmDaily" | "confirmExchange" | "settings" | "amount" | "startTime" | "schedule" | "scheduleUsers" | "scheduleUserList" | "scheduleUserSettings" | "scheduleUserExchangeAmount" | "scheduleUserExchangeWeekdays" | "scheduleDaily" | "scheduleDailyTime" | "scheduleDailyRangeStart" | "scheduleDailyRangeEnd" | "scheduleExchange" | "scheduleExchangeTimes" | "scheduleExchangeWeekdays" | "notifications" | "notificationProvider" | "web" | "summary" | "message";
 type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeConcurrency" | "scheduleExchangeIntervalMs" | "scheduleExchangeIntervalMaxMs" | "scheduleExchangeMaxAttempts" | "scheduleExchangeRequestTimeoutMs" | `notification:${NotificationProviderId}:${string}`;
 type LoginScreen = "direct" | "sms" | "password";
 const parentScreen: Partial<Record<Screen, Screen>> = {
@@ -45,12 +46,14 @@ const parentScreen: Partial<Record<Screen, Screen>> = {
   scheduleUserList: "scheduleUsers",
   scheduleUserSettings: "scheduleUserList",
   scheduleUserExchangeAmount: "scheduleUserSettings",
+  scheduleUserExchangeWeekdays: "scheduleUserSettings",
   scheduleDaily: "schedule",
   scheduleDailyTime: "scheduleDaily",
   scheduleDailyRangeStart: "scheduleDaily",
   scheduleDailyRangeEnd: "scheduleDaily",
   scheduleExchange: "schedule",
   scheduleExchangeTimes: "scheduleExchange",
+  scheduleExchangeWeekdays: "scheduleExchange",
   notifications: "home",
   notificationProvider: "notifications",
   web: "home",
@@ -418,6 +421,11 @@ function App() {
     void updateScheduleConfig((old) => ({ ...old, schedule: { ...old.schedule, exchange: { ...old.schedule.exchange, times: [...selected] } } }));
   }
 
+  function updateScheduleExchangeWeekdays(weekdays: number[]) {
+    if (!config) return;
+    void updateScheduleConfig((old) => ({ ...old, schedule: { ...old.schedule, exchange: { ...old.schedule.exchange, weekdays } } }));
+  }
+
   async function startScheduleRunner() {
     if (!config) return;
     await runTask("定时任务", async () => {
@@ -611,12 +619,14 @@ function App() {
       {screen === "scheduleUserList" && <ScheduleUserList initialIndex={initialIndex("scheduleUserList")} onHighlight={(index) => setActiveIndex("scheduleUserList", index)} config={config} selectUser={(userId) => { setSelectedScheduleUserId(userId); navigate("scheduleUserSettings"); }} navigateBack={navigateBack} />}
       {screen === "scheduleUserSettings" && <ScheduleUserSettings initialIndex={initialIndex("scheduleUserSettings")} onHighlight={(index) => setActiveIndex("scheduleUserSettings", index)} config={config} userId={selectedScheduleUserId} navigate={navigate} updateScheduleUserConfig={(updater) => void updateScheduleUserConfig(selectedScheduleUserId, updater)} navigateBack={navigateBack} />}
       {screen === "scheduleUserExchangeAmount" && <ScheduleUserExchangeAmount initialIndex={initialIndex("scheduleUserExchangeAmount", Math.max(0, EXCHANGE_AMOUNT_OPTIONS.findIndex((option) => option.id === ((config.users.find((u) => u.id === selectedScheduleUserId)?.schedule?.exchange?.exchangeId) ?? config.exchange.exchangeId))))} onHighlight={(index) => setActiveIndex("scheduleUserExchangeAmount", index)} config={config} userId={selectedScheduleUserId} updateScheduleUserConfig={(updater) => void updateScheduleUserConfig(selectedScheduleUserId, updater)} navigateBack={navigateBack} />}
+      {screen === "scheduleUserExchangeWeekdays" && <ScheduleUserExchangeWeekdays initialIndex={initialIndex("scheduleUserExchangeWeekdays")} onHighlight={(index) => setActiveIndex("scheduleUserExchangeWeekdays", index)} config={config} userId={selectedScheduleUserId} updateScheduleUserConfig={(updater) => void updateScheduleUserConfig(selectedScheduleUserId, updater)} navigateBack={navigateBack} />}
       {screen === "scheduleDaily" && <ScheduleDailySettings initialIndex={initialIndex("scheduleDaily")} onHighlight={(index) => setActiveIndex("scheduleDaily", index)} config={config} setPrompt={openPrompt} navigate={navigate} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} navigateBack={navigateBack} />}
       {screen === "scheduleDailyTime" && <ScheduleDailyTime initialIndex={initialIndex("scheduleDailyTime")} onHighlight={(index) => setActiveIndex("scheduleDailyTime", index)} time={config.schedule.daily.time} setPrompt={openPrompt} navigateBack={navigateBack} />}
       {screen === "scheduleDailyRangeStart" && <ScheduleHourSelect initialIndex={initialIndex("scheduleDailyRangeStart", config.schedule.daily.rangeStartHour)} onHighlight={(index) => setActiveIndex("scheduleDailyRangeStart", index)} title="开始小时" currentHour={config.schedule.daily.rangeStartHour} updateHour={(value) => void updateScheduleDailyHour("rangeStartHour", value)} navigateBack={navigateBack} />}
       {screen === "scheduleDailyRangeEnd" && <ScheduleHourSelect initialIndex={initialIndex("scheduleDailyRangeEnd", config.schedule.daily.rangeEndHour)} onHighlight={(index) => setActiveIndex("scheduleDailyRangeEnd", index)} title="结束小时" currentHour={config.schedule.daily.rangeEndHour} updateHour={(value) => void updateScheduleDailyHour("rangeEndHour", value)} navigateBack={navigateBack} />}
       {screen === "scheduleExchange" && <ScheduleExchangeSettings initialIndex={initialIndex("scheduleExchange")} onHighlight={(index) => setActiveIndex("scheduleExchange", index)} config={config} setPrompt={openPrompt} navigate={navigate} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} navigateBack={navigateBack} />}
       {screen === "scheduleExchangeTimes" && <ScheduleExchangeTimes initialIndex={initialIndex("scheduleExchangeTimes")} onHighlight={(index) => setActiveIndex("scheduleExchangeTimes", index)} config={config} toggleTime={toggleScheduleExchangeTime} navigateBack={navigateBack} />}
+      {screen === "scheduleExchangeWeekdays" && <ScheduleExchangeWeekdays initialIndex={initialIndex("scheduleExchangeWeekdays")} onHighlight={(index) => setActiveIndex("scheduleExchangeWeekdays", index)} config={config} setWeekdays={(weekdays) => void updateScheduleExchangeWeekdays(weekdays)} navigateBack={navigateBack} />}
       {screen === "notifications" && <NotificationList initialIndex={initialIndex("notifications")} onHighlight={(index) => setActiveIndex("notifications", index)} config={config} openProvider={openNotificationProvider} navigateBack={navigateBack} />}
       {screen === "notificationProvider" && <NotificationSettings initialIndex={initialIndex("notificationProvider")} onHighlight={(index) => setActiveIndex("notificationProvider", index)} config={config} providerId={selectedNotificationProviderId} setPrompt={openNotificationPrompt} updateNotificationConfig={(key, value) => void updateNotificationConfig(selectedNotificationProviderId, key, value)} testNotification={() => void testNotification(selectedNotificationProviderId)} navigateBack={navigateBack} />}
       {screen === "web" && <WebUi initialIndex={initialIndex("web")} onHighlight={(index) => setActiveIndex("web", index)} runTask={runTask} navigateBack={navigateBack} />}
@@ -885,6 +895,7 @@ function ScheduleExchangeSettings({ initialIndex, onHighlight, config, setPrompt
   return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[
     { label: `优惠券兑换: ${formatEnabled(exchange.enabled)}`, value: "toggle" },
     { label: `兑换场次: ${formatScheduleTimes(exchange.times)}`, value: "times" },
+    { label: `执行周期: ${formatWeekdays(exchange.weekdays)}`, value: "weekdays" },
     { label: `最大并发数: ${exchange.concurrency}`, value: "concurrency" },
     { label: `间隔下限 ms: ${exchange.intervalMs}`, value: "interval" },
     { label: `间隔上限 ms: ${exchange.intervalMaxMs ?? exchange.intervalMs}`, value: "intervalMax" },
@@ -896,6 +907,7 @@ function ScheduleExchangeSettings({ initialIndex, onHighlight, config, setPrompt
     if (item.value === "back") navigateBack();
     else if (item.value === "toggle") updateScheduleConfig((old) => ({ ...old, schedule: { ...old.schedule, exchange: { ...old.schedule.exchange, enabled: !old.schedule.exchange.enabled } } }));
     else if (item.value === "times") navigate("scheduleExchangeTimes");
+    else if (item.value === "weekdays") navigate("scheduleExchangeWeekdays");
     else if (item.value === "concurrency") setPrompt({ key: "scheduleExchangeConcurrency", label: "定时兑换最大并发数", initialValue: String(exchange.concurrency) });
     else if (item.value === "interval") setPrompt({ key: "scheduleExchangeIntervalMs", label: "定时兑换请求间隔下限 ms", initialValue: String(exchange.intervalMs) });
     else if (item.value === "intervalMax") setPrompt({ key: "scheduleExchangeIntervalMaxMs", label: "定时兑换请求间隔上限 ms", initialValue: String(exchange.intervalMaxMs ?? exchange.intervalMs) });
@@ -947,14 +959,18 @@ function ScheduleUserSettings({ initialIndex, onHighlight, config, userId, navig
   const globalDailyEnabled = config.schedule.daily.enabled;
   const globalExchangeEnabled = config.schedule.exchange.enabled;
   const globalExchangeId = config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
+  const globalWeekdays = config.schedule.exchange.weekdays;
+  const userWeekdays = user.schedule?.exchange?.weekdays;
   const dailyLabel = dailyEnabled === undefined ? `继承全局 (${globalDailyEnabled ? "已启用" : "未启用"})` : dailyEnabled ? "已启用" : "已禁用";
   const exchangeLabel = exchangeEnabled === undefined ? `继承全局 (${globalExchangeEnabled ? "已启用" : "未启用"})` : exchangeEnabled ? "已启用" : "已禁用";
   const exchangeIdLabel = exchangeId === undefined ? `继承全局 (${formatExchangeAmount(globalExchangeId)})` : formatExchangeAmount(exchangeId);
+  const weekdaysLabel = userWeekdays === undefined ? `继承全局 (${formatWeekdays(globalWeekdays)})` : formatWeekdays(userWeekdays);
   return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[
     { label: `用户: ${redactText(user.id)}${user.name ? ` / ${redactText(user.name)}` : ""}`, value: "__header" },
     { label: `每日任务: ${dailyLabel}`, value: "daily" },
     { label: `优惠券兑换: ${exchangeLabel}`, value: "exchange" },
     { label: `兑换面额: ${exchangeIdLabel}`, value: "exchangeId" },
+    { label: `执行周期: ${weekdaysLabel}`, value: "weekdays" },
     { label: "重置为全局默认", value: "reset" },
     { label: "返回", value: "back" }
   ]} onSelect={(item) => {
@@ -971,6 +987,7 @@ function ScheduleUserSettings({ initialIndex, onHighlight, config, userId, navig
       return { ...u, schedule: { ...(u.schedule ?? {}), exchange: { ...(u.schedule?.exchange ?? {}), enabled: next } } };
     });
     else if (item.value === "exchangeId") navigate("scheduleUserExchangeAmount");
+    else if (item.value === "weekdays") navigate("scheduleUserExchangeWeekdays");
     else if (item.value === "reset") updateScheduleUserConfig((u) => {
       const { schedule, ...rest } = u;
       return rest as UserConfig;
@@ -1010,6 +1027,51 @@ function ScheduleUserExchangeAmount({ initialIndex, onHighlight, config, userId,
   }} />;
 }
 
+function ScheduleUserExchangeWeekdays({ initialIndex, onHighlight, config, userId, updateScheduleUserConfig, navigateBack }: MenuNavProps & { config: AppConfig; userId: string; updateScheduleUserConfig: (updater: (user: UserConfig) => UserConfig) => void; navigateBack: () => void }) {
+  const user = config.users.find((item) => item.id === userId);
+  const currentWeekdays = user?.schedule?.exchange?.weekdays;
+  const displayWeekdays = currentWeekdays ?? config.schedule.exchange.weekdays;
+  const selected = new Set(displayWeekdays);
+  const items = WEEKDAY_LABELS.map((label, index) => ({ label: `${selected.has(index) ? "[x]" : "[ ]"} ${label}`, value: String(index) }));
+  const setWeekdays = (weekdays: number[]) => {
+    updateScheduleUserConfig((u) => ({
+      ...u,
+      schedule: {
+        ...(u.schedule ?? {}),
+        exchange: {
+          ...(u.schedule?.exchange ?? {}),
+          weekdays
+        }
+      }
+    }));
+  };
+  const toggle = (weekday: number) => {
+    const current = new Set(displayWeekdays);
+    if (current.has(weekday)) {
+      current.delete(weekday);
+    } else {
+      current.add(weekday);
+    }
+    setWeekdays([...current]);
+  };
+  return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[...items, { label: "全选", value: "__all" }, { label: "清空", value: "__none" }, { label: "重置为全局默认", value: "__reset" }, { label: "返回", value: "back" }]} onSelect={(item) => {
+    if (item.value === "back") navigateBack();
+    else if (item.value === "__all") setWeekdays([0, 1, 2, 3, 4, 5, 6]);
+    else if (item.value === "__none") setWeekdays([]);
+    else if (item.value === "__reset") updateScheduleUserConfig((u) => {
+      const { weekdays, ...rest } = u.schedule?.exchange ?? {};
+      return {
+        ...u,
+        schedule: {
+          ...(u.schedule ?? {}),
+          exchange: rest
+        }
+      };
+    });
+    else toggle(Number(item.value));
+  }} />;
+}
+
 function ScheduleDailyTime({ initialIndex, onHighlight, time, setPrompt, navigateBack }: MenuNavProps & { time: string; setPrompt: ScreenProps["setPrompt"]; navigateBack: () => void }) {
   return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[{ label: `自定义固定时间: ${formatCompactTime(time)}`, value: "custom" }, { label: "返回", value: "back" }]} onSelect={(item) => item.value === "back" ? navigateBack() : setPrompt({ key: "scheduleDailyTime", label: "每日任务固定时间 HH:mm:ss", initialValue: formatCompactTime(time) })} />;
 }
@@ -1023,6 +1085,26 @@ function ScheduleExchangeTimes({ initialIndex, onHighlight, config, toggleTime, 
   const selected = new Set(config.schedule.exchange.times);
   const items = EXCHANGE_START_TIME_OPTIONS.map((option) => ({ label: `${selected.has(option.value) ? "[x]" : "[ ]"} ${option.label}`, value: option.value }));
   return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[...items, { label: "返回", value: "back" }]} onSelect={(item) => item.value === "back" ? navigateBack() : toggleTime(item.value)} />;
+}
+
+function ScheduleExchangeWeekdays({ initialIndex, onHighlight, config, setWeekdays, navigateBack }: MenuNavProps & { config: AppConfig; setWeekdays: (weekdays: number[]) => void; navigateBack: () => void }) {
+  const selected = new Set(config.schedule.exchange.weekdays);
+  const items = WEEKDAY_LABELS.map((label, index) => ({ label: `${selected.has(index) ? "[x]" : "[ ]"} ${label}`, value: String(index) }));
+  const toggle = (weekday: number) => {
+    const current = new Set(config.schedule.exchange.weekdays);
+    if (current.has(weekday)) {
+      current.delete(weekday);
+    } else {
+      current.add(weekday);
+    }
+    setWeekdays([...current]);
+  };
+  return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[...items, { label: "全选", value: "__all" }, { label: "清空", value: "__none" }, { label: "返回", value: "back" }]} onSelect={(item) => {
+    if (item.value === "back") navigateBack();
+    else if (item.value === "__all") setWeekdays([0, 1, 2, 3, 4, 5, 6]);
+    else if (item.value === "__none") setWeekdays([]);
+    else toggle(Number(item.value));
+  }} />;
 }
 
 function formatScheduleTimes(times: string[]): string {
