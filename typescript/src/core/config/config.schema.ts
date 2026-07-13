@@ -225,10 +225,13 @@ export function isExchangeWeekday(config: AppConfig, user: UserConfig, date = ne
 
 export const WEEKDAY_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
+export const WEEKDAY_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
 export function formatWeekdays(weekdays: number[]): string {
   if (weekdays.length === 7) return "每天";
   if (weekdays.length === 0) return "不执行";
-  const sorted = [...weekdays].sort();
+  const set = new Set(weekdays);
+  const sorted = WEEKDAY_DISPLAY_ORDER.filter((d) => set.has(d));
   return sorted.map((d) => WEEKDAY_LABELS[d]).join("、");
 }
 

@@ -4,7 +4,7 @@ import { Box, Text, render, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { ConfigRepository, DEFAULT_CONFIG_PATH } from "../core/config/config.repository.js";
 import type { AppConfig, UserConfig } from "../core/config/config.schema.js";
-import { formatWeekdays, WEEKDAY_LABELS } from "../core/config/config.schema.js";
+import { formatWeekdays, WEEKDAY_DISPLAY_ORDER, WEEKDAY_LABELS } from "../core/config/config.schema.js";
 import { ApiClient } from "../core/http/api-client.js";
 import { AuthService, type LoginResponse } from "../core/services/auth.service.js";
 import { formatDailyWorkflowSummary, summarizeDailyWorkflow, TaskService, type DailyWorkflowStepResult } from "../core/services/task.service.js";
@@ -1032,7 +1032,7 @@ function ScheduleUserExchangeWeekdays({ initialIndex, onHighlight, config, userI
   const currentWeekdays = user?.schedule?.exchange?.weekdays;
   const displayWeekdays = currentWeekdays ?? config.schedule.exchange.weekdays;
   const selected = new Set(displayWeekdays);
-  const items = WEEKDAY_LABELS.map((label, index) => ({ label: `${selected.has(index) ? "[x]" : "[ ]"} ${label}`, value: String(index) }));
+  const items = WEEKDAY_DISPLAY_ORDER.map((day) => ({ label: `${selected.has(day) ? "[x]" : "[ ]"} ${WEEKDAY_LABELS[day]}`, value: String(day) }));
   const setWeekdays = (weekdays: number[]) => {
     updateScheduleUserConfig((u) => ({
       ...u,
@@ -1089,7 +1089,7 @@ function ScheduleExchangeTimes({ initialIndex, onHighlight, config, toggleTime, 
 
 function ScheduleExchangeWeekdays({ initialIndex, onHighlight, config, setWeekdays, navigateBack }: MenuNavProps & { config: AppConfig; setWeekdays: (weekdays: number[]) => void; navigateBack: () => void }) {
   const selected = new Set(config.schedule.exchange.weekdays);
-  const items = WEEKDAY_LABELS.map((label, index) => ({ label: `${selected.has(index) ? "[x]" : "[ ]"} ${label}`, value: String(index) }));
+  const items = WEEKDAY_DISPLAY_ORDER.map((day) => ({ label: `${selected.has(day) ? "[x]" : "[ ]"} ${WEEKDAY_LABELS[day]}`, value: String(day) }));
   const toggle = (weekday: number) => {
     const current = new Set(config.schedule.exchange.weekdays);
     if (current.has(weekday)) {

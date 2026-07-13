@@ -263,6 +263,10 @@ describe("config schema", () => {
       expect(formatWeekdays([1, 3, 5])).toBe("周一、周三、周五");
     });
 
+    it("formatWeekdays sorts by Monday-first order", () => {
+      expect(formatWeekdays([0, 6])).toBe("周六、周日");
+    });
+
     it("resolveUsersForTask respects schedule.users list", () => {
       const config = AppConfigSchema.parse({
         users: [
