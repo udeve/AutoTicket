@@ -68,6 +68,7 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
     const exchangeEnabled = user.schedule?.exchange?.enabled ?? config.schedule.exchange.enabled;
     const exchangeId = user.schedule?.exchange?.exchangeId ?? config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
     const weekdays = user.schedule?.exchange?.weekdays ?? config.schedule.exchange.weekdays;
+    const maxTicketCount = user.schedule?.exchange?.maxTicketCount ?? config.schedule.exchange.maxTicketCount;
     sendJson(res, 200, {
       user: redactUserForDisplay(user),
       schedule: {
@@ -79,7 +80,8 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
           enabled: exchangeEnabled,
           exchangeId,
           weekdays,
-          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined || user.schedule?.exchange?.weekdays !== undefined ? "user" : "global"
+          maxTicketCount,
+          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined || user.schedule?.exchange?.weekdays !== undefined || user.schedule?.exchange?.maxTicketCount !== undefined ? "user" : "global"
         }
       }
     });
@@ -117,6 +119,13 @@ async function route(req: IncomingMessage, res: ServerResponse, repo: ConfigRepo
       updatedSchedule.exchange = {
         ...(updatedSchedule.exchange ?? {}),
         weekdays
+      };
+    }
+    if (body.maxTicketCount !== undefined) {
+      const maxTicketCount = Number(body.maxTicketCount);
+      updatedSchedule.exchange = {
+        ...(updatedSchedule.exchange ?? {}),
+        maxTicketCount: maxTicketCount > 0 ? maxTicketCount : undefined
       };
     }
     const updatedUser = { ...user, schedule: updatedSchedule };

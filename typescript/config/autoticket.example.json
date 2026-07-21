@@ -13,7 +13,8 @@
         "exchange": {
           "enabled": true,
           "exchangeId": "10",
-          "weekdays": [1, 2, 3, 4, 5]
+          "weekdays": [1, 2, 3, 4, 5],
+          "maxTicketCount": 5
         }
       }
     },
@@ -101,7 +102,11 @@
       "intervalMaxMs": 100,
       "maxAttempts": 50,
       "requestTimeoutMs": 5000,
-      "stopAfterSuccess": true
+      "stopAfterSuccess": true,
+      "maxTicketCount": 5,
+      "preCheckMinutes": 5,
+      "preCheckRetryCount": 5,
+      "preCheckRetryDelayMs": 10000
     }
   }
 }

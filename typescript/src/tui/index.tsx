@@ -24,7 +24,7 @@ import { Menu } from "./components/Menu.js";
 import { TextPrompt } from "./components/TextPrompt.js";
 
 type Screen = "home" | "login" | "direct" | "sms" | "password" | "users" | "status" | "state" | "daily" | "exchange" | "confirmDaily" | "confirmExchange" | "settings" | "amount" | "startTime" | "schedule" | "scheduleUsers" | "scheduleUserList" | "scheduleUserSettings" | "scheduleUserExchangeAmount" | "scheduleUserExchangeWeekdays" | "scheduleDaily" | "scheduleDailyTime" | "scheduleDailyRangeStart" | "scheduleDailyRangeEnd" | "scheduleExchange" | "scheduleExchangeTimes" | "scheduleExchangeWeekdays" | "notifications" | "notificationProvider" | "web" | "summary" | "message";
-type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeConcurrency" | "scheduleExchangeIntervalMs" | "scheduleExchangeIntervalMaxMs" | "scheduleExchangeMaxAttempts" | "scheduleExchangeRequestTimeoutMs" | `notification:${NotificationProviderId}:${string}`;
+type FieldKey = "userId" | "loginName" | "sesId" | "phone" | "imgUniCode" | "captcha" | "smsCode" | "password" | "exchangeId" | "startAt" | "concurrency" | "intervalMs" | "intervalMaxMs" | "maxAttempts" | "requestTimeoutMs" | "scheduleDailyTime" | "scheduleDailyDelayMs" | "scheduleDailyCommentContent" | "scheduleExchangeConcurrency" | "scheduleExchangeIntervalMs" | "scheduleExchangeIntervalMaxMs" | "scheduleExchangeMaxAttempts" | "scheduleExchangeRequestTimeoutMs" | "scheduleExchangeMaxTicketCount" | "scheduleExchangePreCheckMinutes" | "scheduleExchangePreCheckRetryCount" | `notification:${NotificationProviderId}:${string}` | `scheduleUserMaxTicketCount_${string}`;
 type LoginScreen = "direct" | "sms" | "password";
 const parentScreen: Partial<Record<Screen, Screen>> = {
   login: "home",
@@ -553,7 +553,7 @@ function App() {
           mask={prompt.mask}
           initialValue={prompt.initialValue}
           onCancel={() => setPrompt(undefined)}
-          onSubmit={(value) => {
+          onSubmit={async (value) => {
             const notificationPrompt = parseNotificationPromptKey(prompt.key);
             const notificationField = notificationPrompt ? getNotificationProvider(notificationPrompt.providerId)?.fields.find((field) => field.key === notificationPrompt.fieldKey) : undefined;
             if (value.trim() === "" && notificationField?.key !== "tags") {
@@ -585,6 +585,63 @@ function App() {
                 void updateScheduleExchangeValue("maxAttempts", value);
               } else if (prompt.key === "scheduleExchangeRequestTimeoutMs") {
                 void updateScheduleExchangeValue("requestTimeoutMs", value);
+              } else if (prompt.key === "scheduleExchangeMaxTicketCount") {
+                const parsed = value.trim() === "" ? undefined : parseNonNegativeInteger(value);
+                if (parsed !== undefined) {
+                  await updateScheduleConfig((old) => ({
+                    ...old,
+                    schedule: {
+                      ...old.schedule,
+                      exchange: {
+                        ...old.schedule.exchange,
+                        maxTicketCount: parsed > 0 ? parsed : undefined
+                      }
+                    }
+                  }));
+                }
+              } else if (prompt.key === "scheduleExchangePreCheckMinutes") {
+                const parsed = parseNonNegativeInteger(value);
+                if (parsed !== undefined && parsed > 0) {
+                  await updateScheduleConfig((old) => ({
+                    ...old,
+                    schedule: {
+                      ...old.schedule,
+                      exchange: {
+                        ...old.schedule.exchange,
+                        preCheckMinutes: parsed
+                      }
+                    }
+                  }));
+                }
+              } else if (prompt.key === "scheduleExchangePreCheckRetryCount") {
+                const parsed = parseNonNegativeInteger(value);
+                if (parsed !== undefined && parsed > 0) {
+                  await updateScheduleConfig((old) => ({
+                    ...old,
+                    schedule: {
+                      ...old.schedule,
+                      exchange: {
+                        ...old.schedule.exchange,
+                        preCheckRetryCount: parsed
+                      }
+                    }
+                  }));
+                }
+              } else if (prompt.key.startsWith("scheduleUserMaxTicketCount_")) {
+                const userId = prompt.key.replace("scheduleUserMaxTicketCount_", "");
+                const parsed = value.trim() === "" ? undefined : parseNonNegativeInteger(value);
+                if (parsed !== undefined) {
+                  await updateScheduleUserConfig(userId, (u) => ({
+                    ...u,
+                    schedule: {
+                      ...(u.schedule ?? {}),
+                      exchange: {
+                        ...(u.schedule?.exchange ?? {}),
+                        maxTicketCount: parsed > 0 ? parsed : undefined
+                      }
+                    }
+                  }));
+                }
               } else {
                 updateField(prompt.key, value);
               }
@@ -617,7 +674,7 @@ function App() {
       {screen === "schedule" && <ScheduleSettings initialIndex={initialIndex("schedule")} onHighlight={(index) => setActiveIndex("schedule", index)} config={config} setPrompt={openPrompt} navigate={navigate} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} startScheduleRunner={() => void startScheduleRunner()} runPm2Task={(label, task) => void runPm2Task(label, task)} navigateBack={navigateBack} />}
       {screen === "scheduleUsers" && <ScheduleUsers initialIndex={initialIndex("scheduleUsers")} onHighlight={(index) => setActiveIndex("scheduleUsers", index)} config={config} toggleUser={toggleScheduleUser} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} navigate={navigate} navigateBack={navigateBack} />}
       {screen === "scheduleUserList" && <ScheduleUserList initialIndex={initialIndex("scheduleUserList")} onHighlight={(index) => setActiveIndex("scheduleUserList", index)} config={config} selectUser={(userId) => { setSelectedScheduleUserId(userId); navigate("scheduleUserSettings"); }} navigateBack={navigateBack} />}
-      {screen === "scheduleUserSettings" && <ScheduleUserSettings initialIndex={initialIndex("scheduleUserSettings")} onHighlight={(index) => setActiveIndex("scheduleUserSettings", index)} config={config} userId={selectedScheduleUserId} navigate={navigate} updateScheduleUserConfig={(updater) => void updateScheduleUserConfig(selectedScheduleUserId, updater)} navigateBack={navigateBack} />}
+      {screen === "scheduleUserSettings" && <ScheduleUserSettings initialIndex={initialIndex("scheduleUserSettings")} onHighlight={(index) => setActiveIndex("scheduleUserSettings", index)} config={config} userId={selectedScheduleUserId} navigate={navigate} updateScheduleUserConfig={(updater) => void updateScheduleUserConfig(selectedScheduleUserId, updater)} navigateBack={navigateBack} setPrompt={openPrompt} />}
       {screen === "scheduleUserExchangeAmount" && <ScheduleUserExchangeAmount initialIndex={initialIndex("scheduleUserExchangeAmount", Math.max(0, EXCHANGE_AMOUNT_OPTIONS.findIndex((option) => option.id === ((config.users.find((u) => u.id === selectedScheduleUserId)?.schedule?.exchange?.exchangeId) ?? config.exchange.exchangeId))))} onHighlight={(index) => setActiveIndex("scheduleUserExchangeAmount", index)} config={config} userId={selectedScheduleUserId} updateScheduleUserConfig={(updater) => void updateScheduleUserConfig(selectedScheduleUserId, updater)} navigateBack={navigateBack} />}
       {screen === "scheduleUserExchangeWeekdays" && <ScheduleUserExchangeWeekdays initialIndex={initialIndex("scheduleUserExchangeWeekdays")} onHighlight={(index) => setActiveIndex("scheduleUserExchangeWeekdays", index)} config={config} userId={selectedScheduleUserId} updateScheduleUserConfig={(updater) => void updateScheduleUserConfig(selectedScheduleUserId, updater)} navigateBack={navigateBack} />}
       {screen === "scheduleDaily" && <ScheduleDailySettings initialIndex={initialIndex("scheduleDaily")} onHighlight={(index) => setActiveIndex("scheduleDaily", index)} config={config} setPrompt={openPrompt} navigate={navigate} updateScheduleConfig={(updater) => void updateScheduleConfig(updater)} navigateBack={navigateBack} />}
@@ -902,6 +959,9 @@ function ScheduleExchangeSettings({ initialIndex, onHighlight, config, setPrompt
     { label: `请求超时 ms: ${exchange.requestTimeoutMs}`, value: "timeout" },
     { label: `最大尝试次数: ${exchange.maxAttempts}`, value: "maxAttempts" },
     { label: `成功后跳过后续场次: ${exchange.stopAfterSuccess ? "是" : "否"}`, value: "stopAfterSuccess" },
+    { label: `最大持有优惠券数: ${exchange.maxTicketCount ?? "不限制"}`, value: "maxTicketCount" },
+    { label: `预查询提前分钟数: ${exchange.preCheckMinutes}`, value: "preCheckMinutes" },
+    { label: `预查询重试次数: ${exchange.preCheckRetryCount}`, value: "preCheckRetryCount" },
     { label: "返回", value: "back" }
   ]} onSelect={(item) => {
     if (item.value === "back") navigateBack();
@@ -914,6 +974,9 @@ function ScheduleExchangeSettings({ initialIndex, onHighlight, config, setPrompt
     else if (item.value === "timeout") setPrompt({ key: "scheduleExchangeRequestTimeoutMs", label: "定时兑换请求超时 ms", initialValue: String(exchange.requestTimeoutMs) });
     else if (item.value === "maxAttempts") setPrompt({ key: "scheduleExchangeMaxAttempts", label: "定时兑换最大尝试次数", initialValue: String(exchange.maxAttempts) });
     else if (item.value === "stopAfterSuccess") updateScheduleConfig((old) => ({ ...old, schedule: { ...old.schedule, exchange: { ...old.schedule.exchange, stopAfterSuccess: !old.schedule.exchange.stopAfterSuccess } } }));
+    else if (item.value === "maxTicketCount") setPrompt({ key: "scheduleExchangeMaxTicketCount", label: "最大持有优惠券数（0表示不限制）", initialValue: String(exchange.maxTicketCount ?? "") });
+    else if (item.value === "preCheckMinutes") setPrompt({ key: "scheduleExchangePreCheckMinutes", label: "预查询提前分钟数", initialValue: String(exchange.preCheckMinutes) });
+    else if (item.value === "preCheckRetryCount") setPrompt({ key: "scheduleExchangePreCheckRetryCount", label: "预查询重试次数", initialValue: String(exchange.preCheckRetryCount) });
   }} />;
 }
 
@@ -950,27 +1013,31 @@ function ScheduleUserList({ initialIndex, onHighlight, config, selectUser, navig
   }} />;
 }
 
-function ScheduleUserSettings({ initialIndex, onHighlight, config, userId, navigate, updateScheduleUserConfig, navigateBack }: MenuNavProps & { config: AppConfig; userId: string; navigate: (screen: Screen) => void; updateScheduleUserConfig: (updater: (user: UserConfig) => UserConfig) => void; navigateBack: () => void }) {
+function ScheduleUserSettings({ initialIndex, onHighlight, config, userId, navigate, updateScheduleUserConfig, navigateBack, setPrompt }: MenuNavProps & { config: AppConfig; userId: string; navigate: (screen: Screen) => void; updateScheduleUserConfig: (updater: (user: UserConfig) => UserConfig) => void; navigateBack: () => void; setPrompt: (prompt: { key: FieldKey; label: string; mask?: string; initialValue?: string }) => void }) {
   const user = config.users.find((item) => item.id === userId);
   if (!user) return <Text color="red">用户不存在</Text>;
   const dailyEnabled = user.schedule?.daily?.enabled;
   const exchangeEnabled = user.schedule?.exchange?.enabled;
   const exchangeId = user.schedule?.exchange?.exchangeId;
+  const maxTicketCount = user.schedule?.exchange?.maxTicketCount;
   const globalDailyEnabled = config.schedule.daily.enabled;
   const globalExchangeEnabled = config.schedule.exchange.enabled;
   const globalExchangeId = config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
   const globalWeekdays = config.schedule.exchange.weekdays;
+  const globalMaxTicketCount = config.schedule.exchange.maxTicketCount;
   const userWeekdays = user.schedule?.exchange?.weekdays;
   const dailyLabel = dailyEnabled === undefined ? `继承全局 (${globalDailyEnabled ? "已启用" : "未启用"})` : dailyEnabled ? "已启用" : "已禁用";
   const exchangeLabel = exchangeEnabled === undefined ? `继承全局 (${globalExchangeEnabled ? "已启用" : "未启用"})` : exchangeEnabled ? "已启用" : "已禁用";
   const exchangeIdLabel = exchangeId === undefined ? `继承全局 (${formatExchangeAmount(globalExchangeId)})` : formatExchangeAmount(exchangeId);
   const weekdaysLabel = userWeekdays === undefined ? `继承全局 (${formatWeekdays(globalWeekdays)})` : formatWeekdays(userWeekdays);
+  const maxTicketCountLabel = maxTicketCount === undefined ? `继承全局 (${globalMaxTicketCount ?? "不限制"})` : `${maxTicketCount}`;
   return <Menu initialIndex={initialIndex} onHighlight={onHighlight} items={[
     { label: `用户: ${redactText(user.id)}${user.name ? ` / ${redactText(user.name)}` : ""}`, value: "__header" },
     { label: `每日任务: ${dailyLabel}`, value: "daily" },
     { label: `优惠券兑换: ${exchangeLabel}`, value: "exchange" },
     { label: `兑换面额: ${exchangeIdLabel}`, value: "exchangeId" },
     { label: `执行周期: ${weekdaysLabel}`, value: "weekdays" },
+    { label: `最大持有优惠券数: ${maxTicketCountLabel}`, value: "maxTicketCount" },
     { label: "重置为全局默认", value: "reset" },
     { label: "返回", value: "back" }
   ]} onSelect={(item) => {
@@ -988,6 +1055,12 @@ function ScheduleUserSettings({ initialIndex, onHighlight, config, userId, navig
     });
     else if (item.value === "exchangeId") navigate("scheduleUserExchangeAmount");
     else if (item.value === "weekdays") navigate("scheduleUserExchangeWeekdays");
+    else if (item.value === "maxTicketCount") {
+      const promptKey = `scheduleUserMaxTicketCount_${userId}`;
+      const promptLabel = "最大持有优惠券数（0表示不限制）";
+      const initialValue = String(maxTicketCount ?? "");
+      setPrompt({ key: promptKey as FieldKey, label: promptLabel, initialValue });
+    }
     else if (item.value === "reset") updateScheduleUserConfig((u) => {
       const { schedule, ...rest } = u;
       return rest as UserConfig;

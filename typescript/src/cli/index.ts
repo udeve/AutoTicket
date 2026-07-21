@@ -65,6 +65,7 @@ userScheduleCommand
     const exchangeEnabled = user.schedule?.exchange?.enabled ?? config.schedule.exchange.enabled;
     const exchangeId = user.schedule?.exchange?.exchangeId ?? config.schedule.exchange.exchangeId ?? config.exchange.exchangeId;
     const weekdays = user.schedule?.exchange?.weekdays ?? config.schedule.exchange.weekdays;
+    const maxTicketCount = user.schedule?.exchange?.maxTicketCount ?? config.schedule.exchange.maxTicketCount;
     console.log(JSON.stringify({
       user: redactUserForDisplay(user),
       schedule: {
@@ -76,7 +77,8 @@ userScheduleCommand
           enabled: exchangeEnabled,
           exchangeId,
           weekdays,
-          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined || user.schedule?.exchange?.weekdays !== undefined ? "user" : "global"
+          maxTicketCount,
+          source: user.schedule?.exchange?.enabled !== undefined || user.schedule?.exchange?.exchangeId !== undefined || user.schedule?.exchange?.weekdays !== undefined || user.schedule?.exchange?.maxTicketCount !== undefined ? "user" : "global"
         }
       }
     }, null, 2));
@@ -91,6 +93,7 @@ userScheduleCommand
   .option("--exchange-enabled <boolean>", "enable/disable exchange task (true/false)")
   .option("--exchange-id <id>", "exchange coupon id")
   .option("--weekdays <days>", "weekdays to run exchange, comma-separated (0=Sun,1=Mon,...,6=Sat), e.g. 1,3,5")
+  .option("--max-ticket-count <n>", "maximum number of coupons to hold, 0 or unset for unlimited", Number)
   .action(async (options) => {
     const repo = new ConfigRepository(options.config);
     const config = await repo.load();
@@ -122,6 +125,12 @@ userScheduleCommand
       updatedSchedule.exchange = {
         ...(updatedSchedule.exchange ?? {}),
         weekdays
+      };
+    }
+    if (options.maxTicketCount !== undefined) {
+      updatedSchedule.exchange = {
+        ...(updatedSchedule.exchange ?? {}),
+        maxTicketCount: options.maxTicketCount > 0 ? options.maxTicketCount : undefined
       };
     }
     const updatedUser = { ...user, schedule: updatedSchedule };

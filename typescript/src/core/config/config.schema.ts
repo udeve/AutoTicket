@@ -21,7 +21,8 @@ export const UserDailyScheduleConfigSchema = z.object({
 export const UserExchangeScheduleConfigSchema = z.object({
   enabled: z.boolean().optional(),
   exchangeId: z.string().optional(),
-  weekdays: z.array(z.number().int().min(0).max(6)).optional()
+  weekdays: z.array(z.number().int().min(0).max(6)).optional(),
+  maxTicketCount: z.number().int().nonnegative().optional()
 });
 
 export const UserScheduleConfigSchema = z.object({
@@ -98,7 +99,11 @@ export const ScheduleConfigSchema = z.object({
     intervalMaxMs: z.number().int().nonnegative().optional(),
     maxAttempts: z.number().int().positive().default(50),
     requestTimeoutMs: z.number().int().positive().default(5000),
-    stopAfterSuccess: z.boolean().default(true)
+    stopAfterSuccess: z.boolean().default(true),
+    maxTicketCount: z.number().int().nonnegative().optional(),
+    preCheckMinutes: z.number().int().positive().default(5),
+    preCheckRetryCount: z.number().int().positive().default(5),
+    preCheckRetryDelayMs: z.number().int().positive().default(10000)
   }).refine((exchange) => exchange.intervalMaxMs === undefined || exchange.intervalMaxMs >= exchange.intervalMs, {
     message: "schedule.exchange.intervalMaxMs must be greater than or equal to intervalMs",
     path: ["intervalMaxMs"]
@@ -110,7 +115,10 @@ export const ScheduleConfigSchema = z.object({
     intervalMs: 100,
     maxAttempts: 50,
     requestTimeoutMs: 5000,
-    stopAfterSuccess: true
+    stopAfterSuccess: true,
+    preCheckMinutes: 5,
+    preCheckRetryCount: 5,
+    preCheckRetryDelayMs: 10000
   })
 });
 
@@ -173,7 +181,10 @@ export const AppConfigSchema = z.object({
       intervalMs: 100,
       maxAttempts: 50,
       requestTimeoutMs: 5000,
-      stopAfterSuccess: true
+      stopAfterSuccess: true,
+      preCheckMinutes: 5,
+      preCheckRetryCount: 5,
+      preCheckRetryDelayMs: 10000
     }
   }),
   bot: BotConfigSchema.default({
@@ -216,6 +227,10 @@ export function getUserExchangeId(config: AppConfig, user: UserConfig): string {
 
 export function getUserExchangeWeekdays(config: AppConfig, user: UserConfig): number[] {
   return user.schedule?.exchange?.weekdays ?? config.schedule.exchange.weekdays;
+}
+
+export function getUserMaxTicketCount(config: AppConfig, user: UserConfig): number | undefined {
+  return user.schedule?.exchange?.maxTicketCount ?? config.schedule.exchange.maxTicketCount;
 }
 
 export function isExchangeWeekday(config: AppConfig, user: UserConfig, date = new Date()): boolean {

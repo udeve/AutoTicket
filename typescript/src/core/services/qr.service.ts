@@ -57,4 +57,9 @@ export class QrService {
     });
     return response.data;
   }
+
+  async getSubwayTicketCount(user: SessionUser): Promise<number> {
+    const response = await this.getSubwayTickets(user);
+    return response?.list?.length ?? 0;
+  }
 }

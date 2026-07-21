@@ -1,11 +1,12 @@
 import { randomInt } from "node:crypto";
 import type { AppConfig, UserConfig } from "../config/config.schema.js";
-import { getUserExchangeId, isUserDailyEnabled, isUserExchangeEnabled, isExchangeWeekday, resolveUsersForTask } from "../config/config.schema.js";
+import { getUserExchangeId, getUserMaxTicketCount, isUserDailyEnabled, isUserExchangeEnabled, isExchangeWeekday, resolveUsersForTask } from "../config/config.schema.js";
 import { ApiClient } from "../http/api-client.js";
 import { createNotifier } from "../notifier/app.notifier.js";
 import type { Notifier } from "../notifier/notifier.js";
 import { ExchangeScheduler, formatExchangeRunSummary, summarizeExchangeRun } from "../scheduler/exchange-scheduler.js";
 import { ExchangeService } from "../services/exchange.service.js";
+import { QrService } from "../services/qr.service.js";
 import { formatDailyWorkflowSummary, summarizeDailyWorkflow, TaskService, type DailyWorkflowStepResult } from "../services/task.service.js";
 import { TaskStateRepository, todayKey } from "../state/task-state.repository.js";
 import { redactText } from "../utils/redaction.js";
@@ -32,6 +33,9 @@ type ScheduleCandidate =
 export class ScheduleService {
   private readonly notifier: Notifier;
   private readonly logger: (message: string) => void;
+  private readonly ticketCountCache = new Map<string, number>();
+  private readonly ticketCountCacheTime = new Map<string, Date>();
+  private readonly preCheckFailedUsers = new Set<string>();
 
   constructor(private readonly options: ScheduleServiceOptions) {
     this.notifier = createNotifier(options.config);
@@ -113,14 +117,89 @@ export class ScheduleService {
       this.logger(`今日非兑换日，跳过场次 ${startAt}。`);
       return;
     }
+
+    const config = this.options.config.schedule.exchange;
+    const startTime = parseTodayTime(startAt);
+
+    if (config.maxTicketCount) {
+      const preCheckTime = new Date(startTime.getTime() - config.preCheckMinutes * 60 * 1000);
+      if (Date.now() < preCheckTime.getTime()) {
+        this.logger(`等待预查询时间: ${formatTimeText(preCheckTime)}`);
+        await sleep(preCheckTime.getTime() - Date.now());
+      }
+
+      this.preCheckFailedUsers.clear();
+      await Promise.all(users.map(async (user) => {
+        await this.preCheckTicketCount(user, startAt);
+      }));
+    }
+
     await Promise.all(users.map(async (user) => {
       const latest = await this.options.stateRepo.latestFor(user.id, "exchange", todayKey());
       if (this.options.config.schedule.exchange.stopAfterSuccess && latest?.status === "success") {
         this.logger(`${user.id} 今日兑换已成功，跳过场次 ${startAt}。`);
         return;
       }
+
+      const maxTicketCount = getUserMaxTicketCount(this.options.config, user);
+      if (maxTicketCount !== undefined) {
+        if (this.preCheckFailedUsers.has(`${user.id}_${startAt}`)) {
+          this.logger(`${user.id} 预查询优惠券数量失败，跳过场次 ${startAt}。`);
+          return;
+        }
+
+        const cachedCount = this.getCachedTicketCount(user.id, startAt);
+        if (cachedCount !== undefined && cachedCount >= maxTicketCount) {
+          this.logger(`${user.id} 当前持有优惠券 ${cachedCount} 张，已达上限 ${maxTicketCount}，跳过场次 ${startAt}。`);
+          return;
+        }
+      }
+
       await this.runExchangeForUserSafely(user, startAt, true);
     }));
+  }
+
+  private async preCheckTicketCount(user: UserConfig, timeText: string): Promise<void> {
+    const config = this.options.config.schedule.exchange;
+    const maxTicketCount = getUserMaxTicketCount(this.options.config, user);
+
+    if (maxTicketCount === undefined) return;
+
+    const cacheKey = `${user.id}_${timeText}`;
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= config.preCheckRetryCount; attempt++) {
+      const client = new ApiClient();
+      try {
+        const count = await new QrService(client).getSubwayTicketCount(user);
+        this.ticketCountCache.set(cacheKey, count);
+        this.ticketCountCacheTime.set(cacheKey, new Date());
+        this.logger(`${user.id} 预查询优惠券数量成功: ${count} 张（上限: ${maxTicketCount}）`);
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.logger(`${user.id} 预查询优惠券数量失败 (第 ${attempt}/${config.preCheckRetryCount} 次): ${lastError.message}`);
+        await client.close();
+
+        if (attempt < config.preCheckRetryCount) {
+          this.logger(`${user.id} 等待 ${config.preCheckRetryDelayMs}ms 后重试...`);
+          await sleep(config.preCheckRetryDelayMs);
+        }
+      }
+    }
+
+    this.preCheckFailedUsers.add(cacheKey);
+    const errorMsg = `用户 ${user.id} 优惠券数量预查询失败（已重试${config.preCheckRetryCount}次）: ${lastError?.message ?? "未知错误"}`;
+    this.logger(errorMsg);
+    await this.notifier.notify(`AutoTicket 优惠券预查询失败\n${errorMsg}`);
+  }
+
+  private getCachedTicketCount(userId: string, timeText: string): number | undefined {
+    const cacheKey = `${userId}_${timeText}`;
+    if (this.ticketCountCache.has(cacheKey)) {
+      return this.ticketCountCache.get(cacheKey);
+    }
+    return undefined;
   }
 
   private async runDailyScheduleForAllUsers(force: boolean): Promise<void> {
