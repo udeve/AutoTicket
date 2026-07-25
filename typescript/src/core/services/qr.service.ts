@@ -15,6 +15,11 @@ export interface SubwayTicketsResponse {
   msg?: string;
   list?: unknown[];
   total?: number;
+  total_count?: number | string;
+  rec_num?: string;
+  num_2?: string;
+  num_4?: string;
+  num_6?: string;
   [key: string]: unknown;
 }
 
@@ -61,10 +66,15 @@ export class QrService {
 
   async getSubwayTicketCount(user: SessionUser): Promise<number> {
     const response = await this.getSubwayTickets(user);
-    // 优先使用 total 字段，如果没有则使用列表长度
-    if (response?.total !== undefined && typeof response.total === "number") {
-      return response.total;
+    // 优先使用 rec_num 字段（实际优惠券数量）
+    if (response?.rec_num !== undefined) {
+      return parseInt(response.rec_num, 10) ?? 0;
     }
+    // 其次使用 total_count 字段
+    if (response?.total_count !== undefined) {
+      return typeof response.total_count === "number" ? response.total_count : parseInt(String(response.total_count), 10) ?? 0;
+    }
+    // 最后使用列表长度
     return response?.list?.length ?? 0;
   }
 }
