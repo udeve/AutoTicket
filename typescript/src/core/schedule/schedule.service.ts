@@ -121,7 +121,8 @@ export class ScheduleService {
     const config = this.options.config.schedule.exchange;
     const startTime = parseTodayTime(startAt);
 
-    if (config.maxTicketCount) {
+    const anyUserHasMaxTicketCount = users.some((user) => getUserMaxTicketCount(this.options.config, user) !== undefined);
+    if (anyUserHasMaxTicketCount) {
       const preCheckTime = new Date(startTime.getTime() - config.preCheckMinutes * 60 * 1000);
       if (Date.now() < preCheckTime.getTime()) {
         this.logger(`等待预查询时间: ${formatTimeText(preCheckTime)}`);
