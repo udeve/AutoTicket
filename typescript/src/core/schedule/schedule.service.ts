@@ -66,7 +66,33 @@ export class ScheduleService {
       }
     }
 
-    await Promise.all(users.map((user) => this.runExchangeForUser(user, undefined, force)));
+    const config = this.options.config.schedule.exchange;
+    const anyUserHasMaxTicketCount = users.some((user) => getUserMaxTicketCount(this.options.config, user) !== undefined);
+
+    if (anyUserHasMaxTicketCount) {
+      this.preCheckFailedUsers.clear();
+      await Promise.all(users.map(async (user) => {
+        await this.preCheckTicketCount(user, "manual");
+      }));
+    }
+
+    await Promise.all(users.map(async (user) => {
+      const maxTicketCount = getUserMaxTicketCount(this.options.config, user);
+      if (maxTicketCount !== undefined) {
+        if (this.preCheckFailedUsers.has(`${user.id}_manual`)) {
+          this.logger(`${user.id} 预查询优惠券数量失败，跳过手动兑换。`);
+          return;
+        }
+
+        const cachedCount = this.getCachedTicketCount(user.id, "manual");
+        if (cachedCount !== undefined && cachedCount >= maxTicketCount) {
+          this.logger(`${user.id} 当前持有优惠券 ${cachedCount} 张，已达上限 ${maxTicketCount}，跳过手动兑换。`);
+          return;
+        }
+      }
+
+      await this.runExchangeForUser(user, undefined, force);
+    }));
   }
 
   async runForever(): Promise<void> {

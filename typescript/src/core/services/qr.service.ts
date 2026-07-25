@@ -14,6 +14,7 @@ export interface SubwayTicketsResponse {
   result?: string;
   msg?: string;
   list?: unknown[];
+  total?: number;
   [key: string]: unknown;
 }
 
@@ -60,6 +61,10 @@ export class QrService {
 
   async getSubwayTicketCount(user: SessionUser): Promise<number> {
     const response = await this.getSubwayTickets(user);
+    // 优先使用 total 字段，如果没有则使用列表长度
+    if (response?.total !== undefined && typeof response.total === "number") {
+      return response.total;
+    }
     return response?.list?.length ?? 0;
   }
 }
