@@ -73,17 +73,34 @@ describe("schedule service", () => {
     expect(second.getTime()).toBe(first.getTime());
   });
 
-  it("generates crypto random time text inside selected range", () => {
-    const time = randomTimeTextInRange(6, 7);
-    expect(time).toMatch(/^06:\d{2}:\d{2}$/);
+  it("generates crypto random time text inside selected range with boundary exclusion", () => {
+    for (let i = 0; i < 30; i += 1) {
+      const time = randomTimeTextInRange(6, 7);
+      const minute = Number(time.slice(3, 5));
+      expect(minute).toBeGreaterThanOrEqual(5);
+      expect(minute).toBeLessThan(55);
+    }
   });
 
-  it("generates random time text inside a selected shard", () => {
+  it("falls back to full range when range is too small for boundary exclusion", () => {
+    for (let i = 0; i < 30; i += 1) {
+      const time = randomTimeTextInRange(6, 6.1);
+      const minute = Number(time.slice(3, 5));
+      expect(minute).toBeGreaterThanOrEqual(0);
+      expect(minute).toBeLessThan(6);
+    }
+  });
+
+  it("generates random time text inside a selected shard with boundary exclusion", () => {
     for (let i = 0; i < 30; i += 1) {
       const first = randomTimeTextInShard(6, 7, 0, 2);
       const second = randomTimeTextInShard(6, 7, 1, 2);
-      expect(first).toMatch(/^06:([0-2]\d):\d{2}$/);
-      expect(second).toMatch(/^06:([3-5]\d):\d{2}$/);
+      const firstMinute = Number(first.slice(3, 5));
+      const secondMinute = Number(second.slice(3, 5));
+      expect(firstMinute).toBeGreaterThanOrEqual(5);
+      expect(firstMinute).toBeLessThan(30);
+      expect(secondMinute).toBeGreaterThanOrEqual(30);
+      expect(secondMinute).toBeLessThan(55);
     }
   });
 
@@ -114,10 +131,10 @@ describe("schedule service", () => {
     const plan = await new ScheduleService({ config, stateRepo }).previewDailyPlan("2026-06-06");
     const minutes = plan.map((item) => Number(item.time.slice(3, 5))).sort((a, b) => a - b);
     expect(plan).toHaveLength(2);
-    expect(minutes[0]).toBeGreaterThanOrEqual(0);
+    expect(minutes[0]).toBeGreaterThanOrEqual(5);
     expect(minutes[0]).toBeLessThan(30);
     expect(minutes[1]).toBeGreaterThanOrEqual(30);
-    expect(minutes[1]).toBeLessThan(60);
+    expect(minutes[1]).toBeLessThan(55);
   });
 
   it("keeps the background loop alive when one scheduled daily user fails", async () => {

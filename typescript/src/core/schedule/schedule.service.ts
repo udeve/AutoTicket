@@ -519,12 +519,20 @@ function randomTimeInRange(dateKey: string, startHour: number, endHour: number, 
   return parseDailyRandomTime(dateKey, time, base);
 }
 
+const BOUNDARY_EXCLUSION_SECONDS = 5 * 60;
+
 export function randomTimeTextInRange(startHour: number, endHour: number): string {
   if (endHour <= startHour) {
     throw new Error("Invalid daily time range: end hour must be greater than start hour.");
   }
-  const totalSeconds = startHour * 60 * 60 + randomInt((endHour - startHour) * 60 * 60);
-  return formatSecondOfDay(totalSeconds);
+  const totalRangeSeconds = Math.round((endHour - startHour) * 60 * 60);
+  if (totalRangeSeconds <= BOUNDARY_EXCLUSION_SECONDS * 2) {
+    const totalSeconds = startHour * 60 * 60 + randomInt(totalRangeSeconds);
+    return formatSecondOfDay(totalSeconds);
+  }
+  const effectiveStart = startHour * 60 * 60 + BOUNDARY_EXCLUSION_SECONDS;
+  const effectiveRange = totalRangeSeconds - BOUNDARY_EXCLUSION_SECONDS * 2;
+  return formatSecondOfDay(effectiveStart + randomInt(effectiveRange));
 }
 
 export function randomTimeTextInShard(startHour: number, endHour: number, shardIndex: number, shardCount: number): string {
@@ -533,12 +541,20 @@ export function randomTimeTextInShard(startHour: number, endHour: number, shardI
   }
   const count = Math.max(1, Math.floor(shardCount));
   const index = Math.min(Math.max(0, Math.floor(shardIndex)), count - 1);
-  const startSecond = startHour * 60 * 60;
-  const totalRangeSeconds = (endHour - startHour) * 60 * 60;
-  const shardStartOffset = Math.floor((totalRangeSeconds * index) / count);
-  const shardEndOffset = Math.floor((totalRangeSeconds * (index + 1)) / count);
+  const totalRangeSeconds = Math.round((endHour - startHour) * 60 * 60);
+  if (totalRangeSeconds <= BOUNDARY_EXCLUSION_SECONDS * 2) {
+    const startSecond = startHour * 60 * 60;
+    const shardStartOffset = Math.floor((totalRangeSeconds * index) / count);
+    const shardEndOffset = Math.floor((totalRangeSeconds * (index + 1)) / count);
+    const shardSize = Math.max(1, shardEndOffset - shardStartOffset);
+    return formatSecondOfDay(startSecond + shardStartOffset + randomInt(shardSize));
+  }
+  const effectiveStart = startHour * 60 * 60 + BOUNDARY_EXCLUSION_SECONDS;
+  const effectiveRange = totalRangeSeconds - BOUNDARY_EXCLUSION_SECONDS * 2;
+  const shardStartOffset = Math.floor((effectiveRange * index) / count);
+  const shardEndOffset = Math.floor((effectiveRange * (index + 1)) / count);
   const shardSize = Math.max(1, shardEndOffset - shardStartOffset);
-  return formatSecondOfDay(startSecond + shardStartOffset + randomInt(shardSize));
+  return formatSecondOfDay(effectiveStart + shardStartOffset + randomInt(shardSize));
 }
 
 export function randomShardIndexes(users: Array<{ id: string }>): Map<string, number> {
